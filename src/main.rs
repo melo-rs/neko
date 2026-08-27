@@ -2,13 +2,15 @@
 #![no_main]
 
 use core::{
-    arch::{asm, global_asm},
+    arch::global_asm,
     mem::MaybeUninit,
     panic::PanicInfo,
 };
 use neko::{
-    io::{STDIN_FILENO, STDOUT_FILENO},
-    x86_64::{AT_FDCWD, SYS_CLOSE, SYS_EXIT, SYS_OPENAT, SYS_READ, SYS_WRITE},
+    io::{STDIN_FILENO, STDOUT_FILENO, read, write},
+    process::exit,
+    fs::{openat, close},
+    x86_64::AT_FDCWD,
 };
 
 #[panic_handler]
@@ -82,96 +84,4 @@ fn copy_to_stdout(fd: i32, buffer: &mut MaybeUninit<[u8; 4096]>) {
             offset += written as usize
         }
     }
-}
-
-/// Terminates the current process with the given exit code.
-///
-/// This implementation is specific to Linux on x86-64.
-fn exit(code: usize) -> ! {
-    unsafe {
-        asm!(
-            "syscall",
-            in("rax") SYS_EXIT,
-            in("rdi") code,
-            options(noreturn)
-        )
-    }
-}
-
-// TODO: switch to Result<i32, Errno>
-fn openat(dirfd: i32, pathname: *const u8, flags: i32, mode: u32) -> i32 {
-    let file_descriptor: i32;
-
-    unsafe {
-        asm!(
-            "syscall",
-            in("rax") SYS_OPENAT,
-            in("rdi") dirfd,
-            in("rsi") pathname,
-            in("rdx") flags,
-            in("r10") mode,
-            lateout("rax") file_descriptor,
-            lateout("rcx") _,
-            lateout("r11") _,
-        )
-    };
-
-    return file_descriptor;
-}
-
-// TODO: switch to Result<isize, Errno>
-fn read(fd: i32, buf: *mut u8, count: usize) -> isize {
-    let result: isize;
-
-    unsafe {
-        asm!(
-            "syscall",
-            in("rax") SYS_READ,
-            in("rdi") fd,
-            in("rsi") buf,
-            in("rdx") count,
-            lateout("rax") result,
-            lateout("rcx") _,
-            lateout("r11") _,
-        )
-    }
-
-    return result;
-}
-
-// TODO: switch to Result<isize, Errno>
-fn write(fd: i32, buf: *const u8, count: usize) -> isize {
-    let result: isize;
-
-    unsafe {
-        asm!(
-            "syscall",
-            in("rax") SYS_WRITE,
-            in("rdi") fd,
-            in("rsi") buf,
-            in("rdx") count,
-            lateout("rax") result,
-            lateout("rcx") _,
-            lateout("r11") _,
-        )
-    }
-
-    return result;
-}
-
-fn close(fd: i32) -> isize {
-    let result: isize;
-
-    unsafe {
-        asm!(
-            "syscall",
-            in("rax") SYS_CLOSE,
-            in("rdi") fd,
-            lateout("rax") result,
-            lateout("rcx") _,
-            lateout("r11") _,
-        )
-    }
-
-    result
 }
