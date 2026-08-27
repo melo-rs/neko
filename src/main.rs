@@ -32,8 +32,14 @@ pub extern "C" fn do_start(rsp_ptr: *const usize) -> ! {
         let file_descriptor = match argc {
             1 => STDIN_FILENO,
             2 => {
-                let pathname_ptr = *rsp_ptr.add(2);
-                openat(AT_FDCWD, pathname_ptr as *const u8, 0, 0)
+                let pathname_ptr = *rsp_ptr.add(2) as *const u8;
+                let is_stdin = *pathname_ptr == b'-' && *pathname_ptr.add(1) == 0;
+
+                if is_stdin {
+                    STDIN_FILENO
+                } else {
+                    openat(AT_FDCWD, pathname_ptr as *const u8, 0, 0)
+                }
             }
             _ => todo!("accept multiple inputs"),
         };
