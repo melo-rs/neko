@@ -6,7 +6,9 @@ use core::{
     mem::MaybeUninit,
     panic::PanicInfo,
 };
-use neko::x86_64::{AT_FDCWD, STDOUT_FILENO, SYS_EXIT, SYS_OPENAT, SYS_READ, SYS_WRITE};
+use neko::{
+    io::{STDIN_FILENO, STDOUT_FILENO}, x86_64::{AT_FDCWD, SYS_EXIT, SYS_OPENAT, SYS_READ, SYS_WRITE},
+};
 
 #[panic_handler]
 fn on_panic(_info: &PanicInfo) -> ! {
@@ -25,9 +27,16 @@ _start:
 #[unsafe(no_mangle)]
 pub extern "C" fn do_start(rsp_ptr: *const usize) -> ! {
     unsafe {
-        let pathname_ptr = *rsp_ptr.add(2);
+        let argc = *rsp_ptr;
 
-        let file_descriptor = openat(AT_FDCWD, pathname_ptr as *const u8, 0, 0);
+        let file_descriptor = match argc {
+            1 => STDIN_FILENO,
+            2 => {
+                let pathname_ptr = *rsp_ptr.add(2);
+                openat(AT_FDCWD, pathname_ptr as *const u8, 0, 0)
+            }
+            _ => todo!("accept multiple inputs"),
+        };
 
         let mut buffer = MaybeUninit::<[u8; 4096]>::uninit();
 

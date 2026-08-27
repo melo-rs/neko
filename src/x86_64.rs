@@ -25,6 +25,3 @@ pub const SYS_READ: usize = 0;
 ///
 /// ['write(2)']: https://man7.org/linux/man-pages/man2/write.2.html
 pub const SYS_WRITE: usize = 1;
-
-/// File descriptor for the standard output stream.
-pub const STDOUT_FILENO: i32 = 1;
