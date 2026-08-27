@@ -8,7 +8,7 @@ use core::{
 };
 use neko::{
     io::{STDIN_FILENO, STDOUT_FILENO},
-    x86_64::{AT_FDCWD, SYS_EXIT, SYS_OPENAT, SYS_READ, SYS_WRITE},
+    x86_64::{AT_FDCWD, SYS_CLOSE, SYS_EXIT, SYS_OPENAT, SYS_READ, SYS_WRITE},
 };
 
 #[panic_handler]
@@ -45,6 +45,10 @@ pub extern "C" fn do_start(rsp_ptr: *const usize) -> ! {
                 };
 
                 copy_to_stdout(fd, &mut buffer);
+
+                if !is_stdin {
+                    close(fd);
+                }
             }
         }
 
@@ -153,4 +157,21 @@ fn write(fd: i32, buf: *const u8, count: usize) -> isize {
     }
 
     return result;
+}
+
+fn close(fd: i32) -> isize {
+    let result: isize;
+
+    unsafe {
+        asm!(
+            "syscall",
+            in("rax") SYS_CLOSE,
+            in("rdi") fd,
+            lateout("rax") result,
+            lateout("rcx") _,
+            lateout("r11") _,
+        )
+    }
+
+    result
 }
