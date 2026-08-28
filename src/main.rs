@@ -80,8 +80,7 @@ pub extern "C" fn do_start(rsp_ptr: *const usize) -> ! {
             }
         }
 
-        let exit_status = if had_error { 1 } else { 0 };
-        exit(exit_status);
+        exit(if had_error { 1 } else { 0 });
     }
 }
 
