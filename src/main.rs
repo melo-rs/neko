@@ -1,15 +1,14 @@
 #![no_std]
 #![no_main]
 
-use core::{
-    arch::global_asm,
-    mem::MaybeUninit,
-    panic::PanicInfo,
-};
+use core::{arch::global_asm, mem::MaybeUninit, panic::PanicInfo};
 use neko::{
-    io::{STDIN_FILENO, STDOUT_FILENO, read, write},
+    error::Errno,
+    fs::{close, openat},
+    io::{
+        STDERR_FILENO, STDIN_FILENO, STDOUT_FILENO, WriteVector, read, write_all, write_vectored,
+    },
     process::exit,
-    fs::{openat, close},
     x86_64::AT_FDCWD,
 };
 
@@ -31,10 +30,17 @@ _start:
 pub extern "C" fn do_start(rsp_ptr: *const usize) -> ! {
     unsafe {
         let argc = *rsp_ptr;
+
         let mut buffer = MaybeUninit::<[u8; 4096]>::uninit();
+        let mut had_error = false;
 
         if argc == 1 {
-            copy_to_stdout(STDIN_FILENO, &mut buffer);
+            let result = copy_to_stdout(STDIN_FILENO, &mut buffer);
+
+            if let Err(errno) = result {
+                let _ = write_stdin_error(false, errno);
+                had_error = true;
+            }
         } else {
             for operand in 1..argc {
                 let pathname_ptr = *rsp_ptr.add(operand + 1) as *const u8;
@@ -43,45 +49,110 @@ pub extern "C" fn do_start(rsp_ptr: *const usize) -> ! {
                 let fd = if is_stdin {
                     STDIN_FILENO
                 } else {
-                    openat(AT_FDCWD, pathname_ptr, 0, 0)
+                    let openat_result = loop {
+                        match openat(AT_FDCWD, pathname_ptr, 0, 0) {
+                            Err(errno) if errno == Errno::EINTR => continue,
+                            result => break result,
+                        }
+                    };
+
+                    match openat_result {
+                        Ok(fd) => fd,
+                        Err(errno) => {
+                            let _ = write_operand_error(pathname_ptr, errno);
+                            had_error = true;
+
+                            continue;
+                        }
+                    }
                 };
 
-                copy_to_stdout(fd, &mut buffer);
+                let result = copy_to_stdout(fd, &mut buffer);
+
+                if let Err(errno) = result {
+                    let _ = write_operand_error(pathname_ptr, errno);
+                    had_error = true;
+                }
 
                 if !is_stdin {
-                    close(fd);
+                    let _ = close(fd);
                 }
             }
         }
 
-        exit(0);
+        let exit_status = if had_error { 1 } else { 0 };
+        exit(exit_status);
     }
 }
 
-fn copy_to_stdout(fd: i32, buffer: &mut MaybeUninit<[u8; 4096]>) {
+fn copy_to_stdout(fd: i32, buffer: &mut MaybeUninit<[u8; 4096]>) -> Result<(), Errno> {
     loop {
-        let _read = read(fd, buffer.as_mut_ptr() as *mut u8, 4096);
-
-        if _read < 0 {
-            exit(1);
-        }
+        let _read = match read(fd, buffer.as_mut_ptr() as *mut u8, 4096) {
+            Ok(_read) => _read,
+            Err(errno) if errno == Errno::EINTR => continue,
+            Err(errno) => break Err(errno),
+        };
 
         if _read == 0 {
-            break;
+            break Ok(());
         }
 
-        let _read = _read as usize;
-        let mut offset = 0usize;
+        let initialized =
+            unsafe { core::slice::from_raw_parts(buffer.as_ptr() as *const u8, _read) };
 
-        while offset < _read {
-            let buf = unsafe { (buffer.as_ptr() as *const u8).add(offset) };
-            let written = write(STDOUT_FILENO, buf, _read - offset);
+        let result = write_all(STDOUT_FILENO, &initialized);
 
-            if written <= 0 {
-                exit(1);
-            }
-
-            offset += written as usize
+        if result.is_err() {
+            exit(1)
         }
+    }
+}
+
+const UNKNOWN_ERROR_MESSAGE: &[u8] = b"unknown error";
+
+fn write_stdin_error(as_dash: bool, errno: Errno) -> Result<(), neko::io::WriteError> {
+    write_vectored(
+        STDERR_FILENO,
+        &mut [
+            if as_dash {
+                WriteVector::from_slice(b"neko: -: ")
+            } else {
+                WriteVector::from_slice(b"neko: stdin: ")
+            },
+            WriteVector::from_slice(errno.description().unwrap_or(UNKNOWN_ERROR_MESSAGE)),
+        ],
+    )
+}
+
+fn write_operand_error(pathname_ptr: *const u8, errno: Errno) -> Result<(), neko::io::WriteError> {
+    const PROGRAM: &[u8] = b"neko: ";
+    const EMPTY_STR: &[u8] = b"'': ";
+    const SEPARATOR: &[u8] = b": ";
+    const LINE_FEED: &[u8] = b"\n";
+
+    let is_empty_str = unsafe { *pathname_ptr == 0 };
+    let description = errno.description().unwrap_or(UNKNOWN_ERROR_MESSAGE);
+
+    if is_empty_str {
+        write_vectored(
+            STDERR_FILENO,
+            &mut [
+                WriteVector::from_slice(PROGRAM),
+                WriteVector::from_slice(EMPTY_STR),
+                WriteVector::from_slice(description),
+                WriteVector::from_slice(LINE_FEED),
+            ],
+        )
+    } else {
+        write_vectored(
+            STDERR_FILENO,
+            &mut [
+                WriteVector::from_slice(PROGRAM),
+                unsafe { WriteVector::from_c_str(pathname_ptr) },
+                WriteVector::from_slice(SEPARATOR),
+                WriteVector::from_slice(description),
+                WriteVector::from_slice(LINE_FEED),
+            ],
+        )
     }
 }

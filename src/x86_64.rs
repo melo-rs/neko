@@ -26,6 +26,11 @@ pub const SYS_READ: usize = 0;
 /// ['write(2)']: https://man7.org/linux/man-pages/man2/write.2.html
 pub const SYS_WRITE: usize = 1;
 
+/// x86-64 Linux syscall number for [`writev(2)`].
+///
+/// [`writev(2)`]: https://man7.org/linux/man-pages/man2/writev.2.html
+pub const SYS_WRITEV: usize = 20;
+
 /// x86-64 Linux syscall number for ['close(2)'].
 ///
 /// ['close(2)']: https://man7.org/linux/man-pages/man2/close.2.html

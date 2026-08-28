@@ -1,12 +1,15 @@
+use crate::{
+    error::Errno,
+    x86_64::{SYS_CLOSE, SYS_OPENAT},
+};
 use core::arch::asm;
-use crate::x86_64::{SYS_OPENAT, SYS_CLOSE};
 
 /// Opens the file specified by `pathname` relative to `dirfd` using the
 /// Linux [`openat(2)`] system call.
-/// 
+///
 /// [`openat(2)`]: https://man7.org/linux/man-pages/man2/open.2.html
-pub fn openat(dirfd: i32, pathname: *const u8, flags: i32, mode: u32) -> i32 {
-    let fd: i32;
+pub fn openat(dirfd: i32, pathname: *const u8, flags: i32, mode: u32) -> Result<i32, Errno> {
+    let result: i32;
 
     unsafe {
         asm!(
@@ -16,20 +19,24 @@ pub fn openat(dirfd: i32, pathname: *const u8, flags: i32, mode: u32) -> i32 {
             in("rsi") pathname,
             in("rdx") flags,
             in("r10") mode,
-            lateout("rax") fd,
+            lateout("rax") result,
             lateout("rcx") _,
             lateout("r11") _,
         )
     };
 
-    fd
+    if result.is_negative() {
+        Err(Errno(result.unsigned_abs() as u16))
+    } else {
+        Ok(result)
+    }
 }
 
 /// Closes the given file descriptor using the Linux [`close(2)`] system
 /// call.
 ///
 /// [`close(2)`]: https://man7.org/linux/man-pages/man2/close.2.html
-pub fn close(fd: i32) -> isize {
+pub fn close(fd: i32) -> Result<isize, Errno> {
     let result: isize;
 
     unsafe {
@@ -43,5 +50,9 @@ pub fn close(fd: i32) -> isize {
         )
     }
 
-    result
+    if result.is_negative() {
+        Err(Errno(result.unsigned_abs() as u16))
+    } else {
+        Ok(result)
+    }
 }
