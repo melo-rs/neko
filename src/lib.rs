@@ -1,8 +1,5 @@
 #![no_std]
 
-#[macro_use]
-pub mod fmt;
-
 pub mod error;
 pub mod fs;
 pub mod io;
