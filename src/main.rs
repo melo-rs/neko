@@ -2,7 +2,7 @@
 #![no_main]
 
 use core::{arch::global_asm, mem::MaybeUninit, panic::PanicInfo};
-use neko::{
+use neko_rs::{
     error::Errno,
     fs::{close, openat},
     io::{
@@ -109,7 +109,7 @@ fn copy_to_stdout(fd: i32, buffer: &mut MaybeUninit<[u8; 4096]>) -> Result<(), E
 
 const UNKNOWN_ERROR_MESSAGE: &[u8] = b"unknown error";
 
-fn write_stdin_error(as_dash: bool, errno: Errno) -> Result<(), neko::io::WriteError> {
+fn write_stdin_error(as_dash: bool, errno: Errno) -> Result<(), neko_rs::io::WriteError> {
     write_vectored(
         STDERR_FILENO,
         &mut [
@@ -123,7 +123,7 @@ fn write_stdin_error(as_dash: bool, errno: Errno) -> Result<(), neko::io::WriteE
     )
 }
 
-fn write_operand_error(pathname_ptr: *const u8, errno: Errno) -> Result<(), neko::io::WriteError> {
+fn write_operand_error(pathname_ptr: *const u8, errno: Errno) -> Result<(), neko_rs::io::WriteError> {
     const PROGRAM: &[u8] = b"neko: ";
     const EMPTY_STR: &[u8] = b"'': ";
     const SEPARATOR: &[u8] = b": ";
