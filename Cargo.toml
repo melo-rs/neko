@@ -5,8 +5,13 @@ panic = "abort"
 panic = "abort"
 
 [package]
-name = "neko"
+name = "neko-rs"
 version = "0.1.0"
+authors = ["Davi Melo <hello@dmelo.sh>"]
 edition = "2024"
+
+[[bin]]
+name = "neko"
+path = "src/main.rs"
 
 [dependencies]
