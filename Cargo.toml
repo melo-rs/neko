@@ -6,9 +6,11 @@ panic = "abort"
 
 [package]
 name = "neko-rs"
+description = "Minimal cat implementation written in no_std Rust with direct Linux syscalls."
 version = "0.1.0"
 authors = ["Davi Melo <hello@dmelo.sh>"]
 edition = "2024"
+license = "MIT"
 
 [[bin]]
 name = "neko"
