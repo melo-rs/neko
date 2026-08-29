@@ -75,7 +75,12 @@ pub extern "C" fn do_start(rsp_ptr: *const usize) -> ! {
                 }
 
                 if !is_stdin {
-                    let _ = close(fd);
+                    let close_result = close(fd);
+
+                    if let Err(errno) = close_result {
+                        let _ = write_operand_error(pathname_ptr, errno);
+                        had_error = true;
+                    }
                 }
             }
         }
