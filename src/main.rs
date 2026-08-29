@@ -6,7 +6,8 @@ use neko_rs::{
     error::Errno,
     fs::{close, openat},
     io::{
-        STDERR_FILENO, STDIN_FILENO, STDOUT_FILENO, WriteVector, read, write_all, write_vectored,
+        STDERR_FILENO, STDIN_FILENO, STDOUT_FILENO, WriteError, WriteVector, read, write_all,
+        write_vectored,
     },
     process::exit,
     x86_64::AT_FDCWD,
@@ -35,11 +36,18 @@ pub extern "C" fn do_start(rsp_ptr: *const usize) -> ! {
         let mut had_error = false;
 
         if argc == 1 {
-            let result = copy_to_stdout(STDIN_FILENO, &mut buffer);
+            let result = stream_to_stdout(STDIN_FILENO, &mut buffer);
 
-            if let Err(errno) = result {
-                let _ = write_stdin_error(false, errno);
-                had_error = true;
+            match result {
+                Ok(()) => {}
+                Err(StreamError::Read(errno)) => {
+                    let _ = write_stdin_error(false, errno);
+                    had_error = true
+                }
+                Err(StreamError::Write(error)) => {
+                    let _ = write_stdout_error(error);
+                    exit(1);
+                }
             }
         } else {
             for operand in 1..argc {
@@ -67,11 +75,18 @@ pub extern "C" fn do_start(rsp_ptr: *const usize) -> ! {
                     }
                 };
 
-                let result = copy_to_stdout(fd, &mut buffer);
+                let result = stream_to_stdout(fd, &mut buffer);
 
-                if let Err(errno) = result {
-                    let _ = write_operand_error(pathname_ptr, errno);
-                    had_error = true;
+                match result {
+                    Ok(()) => {}
+                    Err(StreamError::Read(errno)) => {
+                        let _ = write_operand_error(pathname_ptr, errno);
+                        had_error = true
+                    }
+                    Err(StreamError::Write(error)) => {
+                        let _ = write_stdout_error(error);
+                        exit(1);
+                    }
                 }
 
                 if !is_stdin {
@@ -89,12 +104,17 @@ pub extern "C" fn do_start(rsp_ptr: *const usize) -> ! {
     }
 }
 
-fn copy_to_stdout(fd: i32, buffer: &mut MaybeUninit<[u8; 4096]>) -> Result<(), Errno> {
+enum StreamError {
+    Read(Errno),
+    Write(WriteError),
+}
+
+fn stream_to_stdout(fd: i32, buffer: &mut MaybeUninit<[u8; 4096]>) -> Result<(), StreamError> {
     loop {
         let _read = match read(fd, buffer.as_mut_ptr() as *mut u8, 4096) {
             Ok(_read) => _read,
             Err(errno) if errno == Errno::EINTR => continue,
-            Err(errno) => break Err(errno),
+            Err(errno) => break Err(StreamError::Read(errno)),
         };
 
         if _read == 0 {
@@ -106,8 +126,8 @@ fn copy_to_stdout(fd: i32, buffer: &mut MaybeUninit<[u8; 4096]>) -> Result<(), E
 
         let result = write_all(STDOUT_FILENO, &initialized);
 
-        if result.is_err() {
-            exit(1)
+        if let Err(error) = result {
+            break Err(StreamError::Write(error));
         }
     }
 }
@@ -115,7 +135,7 @@ fn copy_to_stdout(fd: i32, buffer: &mut MaybeUninit<[u8; 4096]>) -> Result<(), E
 const UNKNOWN_ERROR_MESSAGE: &[u8] = b"unknown error";
 const LINE_FEED: &[u8] = b"\n";
 
-fn write_stdin_error(as_dash: bool, errno: Errno) -> Result<(), neko_rs::io::WriteError> {
+fn write_stdin_error(as_dash: bool, errno: Errno) -> Result<(), WriteError> {
     write_vectored(
         STDERR_FILENO,
         &mut [
@@ -130,7 +150,27 @@ fn write_stdin_error(as_dash: bool, errno: Errno) -> Result<(), neko_rs::io::Wri
     )
 }
 
-fn write_operand_error(pathname_ptr: *const u8, errno: Errno) -> Result<(), neko_rs::io::WriteError> {
+fn write_stdout_error(error: WriteError) -> Result<(), WriteError> {
+    write_vectored(
+        STDERR_FILENO,
+        &mut [
+            WriteVector::from_slice(b"neko: stdout: "),
+            match error {
+                WriteError::WriteZero => {
+                    WriteVector::from_slice("書き込みに失敗しました".as_bytes())
+                }
+                WriteError::Errno(errno) => {
+                    WriteVector::from_slice(errno.description().unwrap_or(UNKNOWN_ERROR_MESSAGE))
+                }
+            },
+        ],
+    )
+}
+
+fn write_operand_error(
+    pathname_ptr: *const u8,
+    errno: Errno,
+) -> Result<(), neko_rs::io::WriteError> {
     const PROGRAM: &[u8] = b"neko: ";
     const EMPTY_STR: &[u8] = b"'': ";
     const SEPARATOR: &[u8] = b": ";
