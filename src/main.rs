@@ -108,6 +108,7 @@ fn copy_to_stdout(fd: i32, buffer: &mut MaybeUninit<[u8; 4096]>) -> Result<(), E
 }
 
 const UNKNOWN_ERROR_MESSAGE: &[u8] = b"unknown error";
+const LINE_FEED: &[u8] = b"\n";
 
 fn write_stdin_error(as_dash: bool, errno: Errno) -> Result<(), neko_rs::io::WriteError> {
     write_vectored(
@@ -119,6 +120,7 @@ fn write_stdin_error(as_dash: bool, errno: Errno) -> Result<(), neko_rs::io::Wri
                 WriteVector::from_slice(b"neko: stdin: ")
             },
             WriteVector::from_slice(errno.description().unwrap_or(UNKNOWN_ERROR_MESSAGE)),
+            WriteVector::from_slice(LINE_FEED),
         ],
     )
 }
@@ -127,7 +129,6 @@ fn write_operand_error(pathname_ptr: *const u8, errno: Errno) -> Result<(), neko
     const PROGRAM: &[u8] = b"neko: ";
     const EMPTY_STR: &[u8] = b"'': ";
     const SEPARATOR: &[u8] = b": ";
-    const LINE_FEED: &[u8] = b"\n";
 
     let is_empty_str = unsafe { *pathname_ptr == 0 };
     let description = errno.description().unwrap_or(UNKNOWN_ERROR_MESSAGE);
