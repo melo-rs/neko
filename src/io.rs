@@ -81,8 +81,8 @@ pub fn write(fd: i32, buf: *const u8, count: usize) -> Result<usize, Errno> {
 
 #[repr(C)]
 pub struct WriteVector {
-    pub base: *const u8,
-    pub len: usize,
+    base: *const u8,
+    len: usize,
 }
 
 impl WriteVector {
@@ -155,6 +155,19 @@ pub fn write_all(fd: i32, bytes: &[u8]) -> Result<(), WriteError> {
     Ok(())
 }
 
+/// Writes all vectors to `fd`, retrying interrupted and partial writes.
+///
+/// # Empty vectors
+///
+/// All vectors passed to this function must have a non-zero length.
+///
+/// `write_vectored` treats a zero-byte write as [`WriteError::WriteZero`].
+/// Therefore, a trailing empty vector may cause `WriteZero` even after all
+/// non-empty data has been written successfully.
+///
+/// Callers handling user-provided content must replace empty values with an
+/// appropriate non-empty representation before constructing the vectors.
+/// For example, an empty file operand may be displayed as `''`.
 pub fn write_vectored(fd: i32, vector: &mut [WriteVector]) -> Result<(), WriteError> {
     let mut offset = 0usize;
 
