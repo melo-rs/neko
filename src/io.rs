@@ -52,11 +52,13 @@ pub fn read(fd: i32, buf: *mut u8, count: usize) -> Result<usize, Errno> {
     }
 }
 
-/// Writes up to `count` bytes from `buf` to the given file descriptor
-/// using the Linux [`write(2)`] system call.
+/// Writes data from `buffer` to the given file descriptor using Linux [`write(2)`].
+/// 
+/// Returns the number of bytes written. Partial writes are possible. Use
+/// [`write_all`] to ensure the entire buffer is written.
 ///
 /// [`write(2)`]: https://man7.org/linux/man-pages/man2/write.2.html
-pub fn write(fd: i32, buf: *const u8, count: usize) -> Result<usize, Errno> {
+pub fn write(fd: i32, buffer: &[u8]) -> Result<usize, Errno> {
     let result: isize;
 
     unsafe {
@@ -64,8 +66,8 @@ pub fn write(fd: i32, buf: *const u8, count: usize) -> Result<usize, Errno> {
             "syscall",
             in("rax") SYS_WRITE,
             in("rdi") fd,
-            in("rsi") buf,
-            in("rdx") count,
+            in("rsi") buffer.as_ptr(),
+            in("rdx") buffer.len(),
             lateout("rax") result,
             lateout("rcx") _,
             lateout("r11") _,
@@ -138,13 +140,18 @@ pub enum WriteError {
     WriteZero,
 }
 
-pub fn write_all(fd: i32, bytes: &[u8]) -> Result<(), WriteError> {
+/// Writes the entire `buffer` to the given file descriptor.
+/// 
+/// This function will continuously calls [`write`] until there is no more data to
+/// be written or an error other than [`Errno::EINTR`] is returned. The first error
+/// that is not [`Errno::EINTR`] generated from this function will be returned.
+/// 
+/// This function will never call [`write`] if the buffer contains no data.
+pub fn write_all(fd: i32, buffer: &[u8]) -> Result<(), WriteError> {
     let mut offset = 0usize;
 
-    while offset < bytes.len() {
-        let remaining = &bytes[offset..];
-
-        match write(fd, remaining.as_ptr(), remaining.len()) {
+    while offset < buffer.len() {
+        match write(fd, &buffer[offset..]) {
             Err(errno) if errno == Errno::EINTR => continue,
             Err(errno) => return Err(WriteError::Errno(errno)),
             Ok(0) => return Err(WriteError::WriteZero),

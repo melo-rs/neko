@@ -124,7 +124,7 @@ fn stream_to_stdout(fd: i32, buffer: &mut MaybeUninit<[u8; 4096]>) -> Result<(),
         let initialized =
             unsafe { core::slice::from_raw_parts(buffer.as_ptr() as *const u8, _read) };
 
-        let result = write_all(STDOUT_FILENO, &initialized);
+        let result = write_all(STDOUT_FILENO, initialized);
 
         if let Err(error) = result {
             break Err(StreamError::Write(error));
