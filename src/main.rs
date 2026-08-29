@@ -41,7 +41,7 @@ pub extern "C" fn do_start(rsp_ptr: *const usize) -> ! {
             match result {
                 Ok(()) => {}
                 Err(StreamError::Read(errno)) => {
-                    let _ = write_stdin_error(false, errno);
+                    let _ = write_stdin_error(errno);
                     had_error = true
                 }
                 Err(StreamError::Write(error)) => {
@@ -135,15 +135,11 @@ fn stream_to_stdout(fd: i32, buffer: &mut MaybeUninit<[u8; 4096]>) -> Result<(),
 const UNKNOWN_ERROR_MESSAGE: &[u8] = b"unknown error";
 const LINE_FEED: &[u8] = b"\n";
 
-fn write_stdin_error(as_dash: bool, errno: Errno) -> Result<(), WriteError> {
+fn write_stdin_error(errno: Errno) -> Result<(), WriteError> {
     write_vectored(
         STDERR_FILENO,
         &mut [
-            if as_dash {
-                WriteVector::from_slice(b"neko: -: ")
-            } else {
-                WriteVector::from_slice(b"neko: stdin: ")
-            },
+            WriteVector::from_slice(b"neko: -: "),
             WriteVector::from_slice(errno.description().unwrap_or(UNKNOWN_ERROR_MESSAGE)),
             WriteVector::from_slice(LINE_FEED),
         ],
