@@ -203,13 +203,12 @@ pub fn write_vectored(fd: i32, vectors: &mut [WriteVector]) -> Result<(), WriteE
                         break;
                     }
 
-                    item.len -= written;
-
                     // SAFETY: This branch is reached only when
                     // `written < item.len()`. `base` points to the start of
                     // `item.len()` valid bytes, so advancing it by `written`
                     // keeps it within that allocation.
                     item.base = unsafe { item.base.add(written) };
+                    item.len -= written;
 
                     break;
                 }
