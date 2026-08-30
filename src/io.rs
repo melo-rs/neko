@@ -20,9 +20,9 @@ pub const STDOUT_FILENO: i32 = 1;
 
 /// File descriptor for the standard error stream.
 ///
-/// See ['stdout(3)'].
+/// See [`stderr(3)`].
 ///
-/// ['stdout(3)']: https://man7.org/linux/man-pages/man3/stderr.3.html
+/// [`stderr(3)`]: https://man7.org/linux/man-pages/man3/stderr.3.html
 pub const STDERR_FILENO: i32 = 2;
 
 /// Reads data from the given file descriptor into `buffer` using the Linux
