@@ -32,21 +32,77 @@ _start:
 "#
 );
 
+/// # Safety
+///
+/// `rsp_ptr` must point to a valid Linux x86-64 initial process stack
+/// as provided to `_start`.
 #[unsafe(no_mangle)]
-pub extern "C" fn do_start(rsp_ptr: *const usize) -> ! {
-    unsafe {
-        let argc = *rsp_ptr;
+pub unsafe extern "C" fn do_start(rsp_ptr: *const usize) -> ! {
+    // SAFETY: `rsp_ptr` is valid and points to `argc` as guaranteed by the
+    // function's safety contract
+    let argc = unsafe { *rsp_ptr };
 
-        let mut buffer = MaybeUninit::<[u8; 4096]>::uninit();
-        let mut had_error = false;
+    let mut buffer = MaybeUninit::<[u8; 4096]>::uninit();
+    let mut had_error = false;
 
-        if argc == 1 {
-            let result = stream_to_stdout(STDIN_FILENO, &mut buffer);
+    if argc == 1 {
+        let result = stream_to_stdout(STDIN_FILENO, &mut buffer);
+
+        match result {
+            Ok(()) => {}
+            Err(StreamError::Read(errno)) => {
+                let _ = write_stdin_error(errno);
+                had_error = true
+            }
+            Err(StreamError::Write(error)) => {
+                let _ = write_stdout_error(error);
+                exit(1);
+            }
+        }
+    } else {
+        for operand_index in 1..argc {
+            // SAFETY: `_start` passes the initial stack pointer to this function.
+            // Its leading words are laid out as:
+            //
+            //     [ argc ][ argv[0] ][ argv[1] ] ... [ argv[argc - 1] ][ NULL ]
+            //
+            // Thus `rsp_ptr.add(operand_index + 1)` points to
+            // `argv[operand_index]`. Every non-null argv entry points to a valid
+            // NUL-terminated string for the lifetime of the process image.
+            let operand = unsafe {
+                let operand_ptr = *rsp_ptr.add(operand_index + 1) as *const c_char;
+                CStr::from_ptr(operand_ptr)
+            };
+
+            let is_stdin = operand == c"-";
+
+            let fd = if is_stdin {
+                STDIN_FILENO
+            } else {
+                let openat_result = loop {
+                    match openat(AT_FDCWD, operand, 0, 0) {
+                        Err(errno) if errno == Errno::EINTR => continue,
+                        result => break result,
+                    }
+                };
+
+                match openat_result {
+                    Ok(fd) => fd,
+                    Err(errno) => {
+                        let _ = write_operand_error(operand, errno);
+                        had_error = true;
+
+                        continue;
+                    }
+                }
+            };
+
+            let result = stream_to_stdout(fd, &mut buffer);
 
             match result {
                 Ok(()) => {}
                 Err(StreamError::Read(errno)) => {
-                    let _ = write_stdin_error(errno);
+                    let _ = write_operand_error(operand, errno);
                     had_error = true
                 }
                 Err(StreamError::Write(error)) => {
@@ -54,71 +110,19 @@ pub extern "C" fn do_start(rsp_ptr: *const usize) -> ! {
                     exit(1);
                 }
             }
-        } else {
-            for operand_index in 1..argc {
-                // SAFETY: `_start` passes the initial stack pointer to this function.
-                // Its leading words are laid out as:
-                //
-                //     [ argc ][ argv[0] ][ argv[1] ] ... [ argv[argc - 1] ][ NULL ]
-                //
-                // Thus `rsp_ptr.add(operand_index + 1)` points to
-                // `argv[operand_index]`. Every non-null argv entry points to a valid
-                // NUL-terminated string for the lifetime of the process image.
-                let operand = unsafe {
-                    let operand_ptr = *rsp_ptr.add(operand_index + 1) as *const c_char;
-                    CStr::from_ptr(operand_ptr)
-                };
 
-                let is_stdin = operand == c"-";
+            if !is_stdin {
+                let close_result = close(fd);
 
-                let fd = if is_stdin {
-                    STDIN_FILENO
-                } else {
-                    let openat_result = loop {
-                        match openat(AT_FDCWD, operand, 0, 0) {
-                            Err(errno) if errno == Errno::EINTR => continue,
-                            result => break result,
-                        }
-                    };
-
-                    match openat_result {
-                        Ok(fd) => fd,
-                        Err(errno) => {
-                            let _ = write_operand_error(operand, errno);
-                            had_error = true;
-
-                            continue;
-                        }
-                    }
-                };
-
-                let result = stream_to_stdout(fd, &mut buffer);
-
-                match result {
-                    Ok(()) => {}
-                    Err(StreamError::Read(errno)) => {
-                        let _ = write_operand_error(operand, errno);
-                        had_error = true
-                    }
-                    Err(StreamError::Write(error)) => {
-                        let _ = write_stdout_error(error);
-                        exit(1);
-                    }
-                }
-
-                if !is_stdin {
-                    let close_result = close(fd);
-
-                    if let Err(errno) = close_result {
-                        let _ = write_operand_error(operand, errno);
-                        had_error = true;
-                    }
+                if let Err(errno) = close_result {
+                    let _ = write_operand_error(operand, errno);
+                    had_error = true;
                 }
             }
         }
-
-        exit(if had_error { 1 } else { 0 });
     }
+
+    exit(if had_error { 1 } else { 0 });
 }
 
 enum StreamError {
