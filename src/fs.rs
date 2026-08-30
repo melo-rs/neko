@@ -2,13 +2,13 @@ use crate::{
     error::Errno,
     x86_64::{SYS_CLOSE, SYS_OPENAT},
 };
-use core::arch::asm;
+use core::{arch::asm, ffi::CStr};
 
 /// Opens the file specified by `pathname` relative to `dirfd` using the
 /// Linux [`openat(2)`] system call.
 ///
 /// [`openat(2)`]: https://man7.org/linux/man-pages/man2/open.2.html
-pub fn openat(dirfd: i32, pathname: *const u8, flags: i32, mode: u32) -> Result<i32, Errno> {
+pub fn openat(dirfd: i32, pathname: &CStr, flags: i32, mode: u32) -> Result<i32, Errno> {
     let result: i32;
 
     unsafe {
@@ -16,7 +16,7 @@ pub fn openat(dirfd: i32, pathname: *const u8, flags: i32, mode: u32) -> Result<
             "syscall",
             in("rax") SYS_OPENAT,
             in("rdi") dirfd,
-            in("rsi") pathname,
+            in("rsi") pathname.as_ptr(),
             in("rdx") flags,
             in("r10") mode,
             lateout("rax") result,

@@ -2,7 +2,7 @@ use crate::{
     error::Errno,
     x86_64::{SYS_READ, SYS_WRITE, SYS_WRITEV},
 };
-use core::arch::asm;
+use core::{arch::asm, ffi::CStr};
 
 /// File descriptor for the standard input stream.
 ///
@@ -53,7 +53,7 @@ pub fn read(fd: i32, buf: *mut u8, count: usize) -> Result<usize, Errno> {
 }
 
 /// Writes data from `buffer` to the given file descriptor using Linux [`write(2)`].
-/// 
+///
 /// Returns the number of bytes written. Partial writes are possible. Use
 /// [`write_all`] to ensure the entire buffer is written.
 ///
@@ -95,20 +95,11 @@ impl WriteVector {
         }
     }
 
-    pub unsafe fn from_c_str(ptr: *const u8) -> Self {
-        let mut len = 0usize;
-
-        loop {
-            let byte = unsafe { *ptr.add(len) };
-
-            if byte == 0 {
-                break;
-            }
-
-            len += 1;
+    pub fn from_c_str(c_str: &CStr) -> Self {
+        Self {
+            base: c_str.as_ptr().cast(),
+            len: c_str.count_bytes(),
         }
-
-        Self { base: ptr, len }
     }
 }
 
@@ -141,11 +132,11 @@ pub enum WriteError {
 }
 
 /// Writes the entire `buffer` to the given file descriptor.
-/// 
+///
 /// This function will continuously calls [`write`] until there is no more data to
 /// be written or an error other than [`Errno::EINTR`] is returned. The first error
 /// that is not [`Errno::EINTR`] generated from this function will be returned.
-/// 
+///
 /// This function will never call [`write`] if the buffer contains no data.
 pub fn write_all(fd: i32, buffer: &[u8]) -> Result<(), WriteError> {
     let mut offset = 0usize;
