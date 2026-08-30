@@ -35,6 +35,8 @@ pub const STDERR_FILENO: i32 = 2;
 pub fn read(fd: i32, buffer: &mut [MaybeUninit<u8>]) -> Result<usize, Errno> {
     let result: isize;
 
+    // SAFETY: `buffer` provides valid writable memory for `buffer.len()`
+    // bytes, and the registers follow the Linux x86-64 syscall ABI.
     unsafe {
         asm!(
             "syscall",
@@ -65,6 +67,8 @@ pub fn read(fd: i32, buffer: &mut [MaybeUninit<u8>]) -> Result<usize, Errno> {
 pub fn write(fd: i32, buffer: &[u8]) -> Result<usize, Errno> {
     let result: isize;
 
+    // SAFETY: `buffer` provides valid readable memory for `buffer.len()`
+    // bytes, and the registers follow the Linux x86-64 syscall ABI.
     unsafe {
         asm!(
             "syscall",
@@ -110,16 +114,18 @@ impl<'a> WriteVector<'a> {
     }
 }
 
-pub fn writev(fd: i32, vec: &[WriteVector]) -> Result<usize, Errno> {
+pub fn writev(fd: i32, vectors: &[WriteVector]) -> Result<usize, Errno> {
     let result: isize;
 
+    // SAFETY: `vectors` provides a valid contiguous array of `vectors.len()`
+    // iovecs, and the registers follow the Linux x86-64 syscall ABI.
     unsafe {
         asm!(
             "syscall",
             in("rax") SYS_WRITEV,
             in("rdi") fd,
-            in("rsi") vec.as_ptr(),
-            in("rdx") vec.len(),
+            in("rsi") vectors.as_ptr(),
+            in("rdx") vectors.len(),
             lateout("rax") result,
             lateout("rcx") _,
             lateout("r11") _,

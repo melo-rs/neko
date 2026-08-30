@@ -6,6 +6,7 @@ use core::arch::asm;
 ///
 /// [`exit(2)`]: https://man7.org/linux/man-pages/man2/_exit.2.html
 pub fn exit(code: usize) -> ! {
+    // SAFETY: The registers follow the Linux x86-64 syscall ABI.
     unsafe {
         asm!(
             "syscall",

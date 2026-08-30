@@ -11,6 +11,8 @@ use core::{arch::asm, ffi::CStr};
 pub fn openat(dirfd: i32, pathname: &CStr, flags: i32, mode: u32) -> Result<i32, Errno> {
     let result: i32;
 
+    // SAFETY: `pathname` points to a valid NUL-terminated C string, and the
+    // registers follow the Linux x86-64 syscall ABI.
     unsafe {
         asm!(
             "syscall",
@@ -38,6 +40,7 @@ pub fn openat(dirfd: i32, pathname: &CStr, flags: i32, mode: u32) -> Result<i32,
 pub fn close(fd: i32) -> Result<isize, Errno> {
     let result: isize;
 
+    // SAFETY: the registers follow the Linux x86-64 syscall ABI.
     unsafe {
         asm!(
             "syscall",

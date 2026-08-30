@@ -16,4 +16,10 @@ license = "MIT"
 name = "neko"
 path = "src/main.rs"
 
+[lints.rust]
+unsafe_op_in_unsafe_fn = "forbid"
+
+[lints.clippy]
+undocumented_unsafe_blocks = "forbid"
+
 [dependencies]
