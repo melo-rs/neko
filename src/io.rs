@@ -159,7 +159,7 @@ pub fn write_all(fd: i32, buffer: &[u8]) -> Result<(), WriteError> {
             Err(errno) if errno == Errno::EINTR => continue,
             Err(errno) => return Err(WriteError::Errno(errno)),
             Ok(0) => return Err(WriteError::WriteZero),
-            Ok(written) => offset += written as usize,
+            Ok(written) => offset += written,
         }
     }
 
