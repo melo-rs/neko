@@ -4,8 +4,8 @@ use crate::{
 };
 use core::{arch::asm, ffi::CStr};
 
-/// Opens the file specified by `pathname` relative to `dirfd` using the
-/// Linux [`openat(2)`] system call.
+/// Opens the file specified by `pathname` relative to `dirfd` using the Linux
+/// [`openat(2)`] system call.
 ///
 /// [`openat(2)`]: https://man7.org/linux/man-pages/man2/open.2.html
 pub fn openat(dirfd: i32, pathname: &CStr, flags: i32, mode: u32) -> Result<i32, Errno> {
@@ -32,8 +32,7 @@ pub fn openat(dirfd: i32, pathname: &CStr, flags: i32, mode: u32) -> Result<i32,
     }
 }
 
-/// Closes the given file descriptor using the Linux [`close(2)`] system
-/// call.
+/// Closes the given file descriptor using the Linux [`close(2)`] system call.
 ///
 /// [`close(2)`]: https://man7.org/linux/man-pages/man2/close.2.html
 pub fn close(fd: i32) -> Result<isize, Errno> {

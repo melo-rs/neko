@@ -52,7 +52,8 @@ pub fn read(fd: i32, buf: *mut u8, count: usize) -> Result<usize, Errno> {
     }
 }
 
-/// Writes data from `buffer` to the given file descriptor using Linux [`write(2)`].
+/// Writes data from `buffer` to the given file descriptor using the Linux
+/// [`write(2)`] system call.
 ///
 /// Returns the number of bytes written. Partial writes are possible. Use
 /// [`write_all`] to ensure the entire buffer is written.
@@ -93,7 +94,7 @@ impl<'a> WriteVector<'a> {
         Self {
             base: slice.as_ptr(),
             len: slice.len(),
-            _lifetime: PhantomData
+            _lifetime: PhantomData,
         }
     }
 
@@ -106,7 +107,7 @@ impl<'a> WriteVector<'a> {
     }
 }
 
-pub fn writev(fd: i32, vec: *const WriteVector, veccnt: usize) -> Result<usize, Errno> {
+pub fn writev(fd: i32, vec: &[WriteVector]) -> Result<usize, Errno> {
     let result: isize;
 
     unsafe {
@@ -114,8 +115,8 @@ pub fn writev(fd: i32, vec: *const WriteVector, veccnt: usize) -> Result<usize, 
             "syscall",
             in("rax") SYS_WRITEV,
             in("rdi") fd,
-            in("rsi") vec,
-            in("rdx") veccnt,
+            in("rsi") vec.as_ptr(),
+            in("rdx") vec.len(),
             lateout("rax") result,
             lateout("rcx") _,
             lateout("r11") _,
@@ -169,18 +170,18 @@ pub fn write_all(fd: i32, buffer: &[u8]) -> Result<(), WriteError> {
 /// Callers handling user-provided content must replace empty values with an
 /// appropriate non-empty representation before constructing the vectors.
 /// For example, an empty file operand may be displayed as `''`.
-pub fn write_vectored(fd: i32, vector: &mut [WriteVector]) -> Result<(), WriteError> {
+pub fn write_vectored(fd: i32, vectors: &mut [WriteVector]) -> Result<(), WriteError> {
     let mut offset = 0usize;
 
-    while offset < vector.len() {
-        let vec = &mut vector[offset..];
+    while offset < vectors.len() {
+        let remaining = &mut vectors[offset..];
 
-        match writev(fd, vec.as_ptr(), vec.len()) {
+        match writev(fd, remaining) {
             Err(errno) if errno == Errno::EINTR => continue,
             Err(errno) => return Err(WriteError::Errno(errno)),
             Ok(0) => return Err(WriteError::WriteZero),
             Ok(mut written) => {
-                for item in vec.iter_mut() {
+                for item in remaining.iter_mut() {
                     if item.len < written {
                         offset += 1;
                         written -= item.len;
@@ -194,6 +195,11 @@ pub fn write_vectored(fd: i32, vector: &mut [WriteVector]) -> Result<(), WriteEr
                     }
 
                     item.len -= written;
+
+                    // SAFETY: This branch is reached only when
+                    // `written < item.len()`. `base` points to the start of
+                    // `item.len()` valid bytes, so advancing it by `written`
+                    // keeps it within that allocation.
                     item.base = unsafe { item.base.add(written) };
 
                     break;
