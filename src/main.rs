@@ -183,6 +183,7 @@ fn write_stdout_error(error: WriteError) -> Result<(), WriteError> {
                     WriteVector::from_slice(errno.description().unwrap_or(UNKNOWN_ERROR_MESSAGE))
                 }
             },
+            WriteVector::from_slice(LINE_FEED),
         ],
     )
 }
