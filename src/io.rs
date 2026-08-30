@@ -2,7 +2,7 @@ use crate::{
     error::Errno,
     x86_64::{SYS_READ, SYS_WRITE, SYS_WRITEV},
 };
-use core::{arch::asm, ffi::CStr};
+use core::{arch::asm, ffi::CStr, marker::PhantomData};
 
 /// File descriptor for the standard input stream.
 ///
@@ -82,23 +82,26 @@ pub fn write(fd: i32, buffer: &[u8]) -> Result<usize, Errno> {
 }
 
 #[repr(C)]
-pub struct WriteVector {
+pub struct WriteVector<'a> {
     base: *const u8,
     len: usize,
+    _lifetime: PhantomData<&'a [u8]>,
 }
 
-impl WriteVector {
-    pub fn from_slice(slice: &[u8]) -> Self {
+impl<'a> WriteVector<'a> {
+    pub fn from_slice(slice: &'a [u8]) -> Self {
         Self {
             base: slice.as_ptr(),
             len: slice.len(),
+            _lifetime: PhantomData
         }
     }
 
-    pub fn from_c_str(c_str: &CStr) -> Self {
+    pub fn from_c_str(c_str: &'a CStr) -> Self {
         Self {
             base: c_str.as_ptr().cast(),
             len: c_str.count_bytes(),
+            _lifetime: PhantomData,
         }
     }
 }
