@@ -146,11 +146,11 @@ pub enum WriteError {
 
 /// Writes the entire `buffer` to the given file descriptor.
 ///
-/// This function will continuously calls [`write`] until there is no more data to
+/// This function will continuously calls [`write()`] until there is no more data to
 /// be written or an error other than [`Errno::EINTR`] is returned. The first error
 /// that is not [`Errno::EINTR`] generated from this function will be returned.
 ///
-/// This function will never call [`write`] if the buffer contains no data.
+/// This function will never call [`write()`] if the buffer contains no data.
 pub fn write_all(fd: i32, buffer: &[u8]) -> Result<(), WriteError> {
     let mut offset = 0usize;
 
