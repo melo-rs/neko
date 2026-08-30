@@ -42,7 +42,7 @@ pub unsafe extern "C" fn do_start(rsp_ptr: *const usize) -> ! {
     // function's safety contract
     let argc = unsafe { *rsp_ptr };
 
-    let mut buffer = MaybeUninit::<[u8; 4096]>::uninit();
+    let mut buffer = [MaybeUninit::<u8>::uninit(); 4096];
     let mut had_error = false;
 
     if argc == 1 {
@@ -130,9 +130,9 @@ enum StreamError {
     Write(WriteError),
 }
 
-fn stream_to_stdout(fd: i32, buffer: &mut MaybeUninit<[u8; 4096]>) -> Result<(), StreamError> {
+fn stream_to_stdout(fd: i32, buffer: &mut [MaybeUninit<u8>]) -> Result<(), StreamError> {
     loop {
-        let _read = match read(fd, buffer.as_mut_ptr() as *mut u8, 4096) {
+        let _read = match read(fd, buffer) {
             Ok(_read) => _read,
             Err(errno) if errno == Errno::EINTR => continue,
             Err(errno) => break Err(StreamError::Read(errno)),
@@ -142,8 +142,11 @@ fn stream_to_stdout(fd: i32, buffer: &mut MaybeUninit<[u8; 4096]>) -> Result<(),
             break Ok(());
         }
 
-        let initialized =
-            unsafe { core::slice::from_raw_parts(buffer.as_ptr() as *const u8, _read) };
+        let initialized: &[u8] =
+            // SAFETY: `read` guarantees that the first `_read` elements of 
+            // `buffer` are initialized, with `_read <= buffer.len()`. 
+            // Therefore this range is valid to view as an initialized `[u8]`.
+            unsafe { core::slice::from_raw_parts(buffer.as_ptr().cast(), _read) };
 
         let result = write_all(STDOUT_FILENO, initialized);
 

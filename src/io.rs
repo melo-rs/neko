@@ -2,7 +2,7 @@ use crate::{
     error::Errno,
     x86_64::{SYS_READ, SYS_WRITE, SYS_WRITEV},
 };
-use core::{arch::asm, ffi::CStr, marker::PhantomData};
+use core::{arch::asm, ffi::CStr, marker::PhantomData, mem::MaybeUninit};
 
 /// File descriptor for the standard input stream.
 ///
@@ -25,11 +25,14 @@ pub const STDOUT_FILENO: i32 = 1;
 /// ['stdout(3)']: https://man7.org/linux/man-pages/man3/stderr.3.html
 pub const STDERR_FILENO: i32 = 2;
 
-/// Reads up to `count` bytes from the given file descriptor into `buf`
-/// using the Linux [`read(2)`] system call.
+/// Reads data from the given file descriptor into `buffer` using the Linux
+/// [`read(2)`] system call.
 ///
-/// ['read(2)']: https://man7.org/linux/man-pages/man2/read.2.html
-pub fn read(fd: i32, buf: *mut u8, count: usize) -> Result<usize, Errno> {
+/// Returns the number of bytes read. A successful call initializes the first
+/// returned number of elements in `buffer`. Partial reads are possible.
+///
+/// [`read(2)`]: https://man7.org/linux/man-pages/man2/read.2.html
+pub fn read(fd: i32, buffer: &mut [MaybeUninit<u8>]) -> Result<usize, Errno> {
     let result: isize;
 
     unsafe {
@@ -37,8 +40,8 @@ pub fn read(fd: i32, buf: *mut u8, count: usize) -> Result<usize, Errno> {
             "syscall",
             in("rax") SYS_READ,
             in("rdi") fd,
-            in("rsi") buf,
-            in("rdx") count,
+            in("rsi") buffer.as_mut_ptr(),
+            in("rdx") buffer.len(),
             lateout("rax") result,
             lateout("rcx") _,
             lateout("r11") _,
