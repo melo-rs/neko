@@ -11,6 +11,11 @@ pub const AT_FDCWD: i32 = -100;
 /// ['openat(2)']: https://man7.org/linux/man-pages/man2/open.2.html
 pub const SYS_OPENAT: usize = 257;
 
+/// x86-64 Linux syscall number for [`fstat(2)`]
+///
+/// [`fstat(2)`]: https://man7.org/linux/man-pages/man2/stat.2.html
+pub const SYS_FSTAT: usize = 5;
+
 /// x86-64 Linux syscall number for [`exit(2)`].
 ///
 /// [`exit(2)`]: https://man7.org/linux/man-pages/man2/_exit.2.html

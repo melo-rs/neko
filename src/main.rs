@@ -9,7 +9,7 @@ use core::{
 };
 use neko_rs::{
     error::Errno,
-    fs::{close, openat},
+    fs::{close, fstat, openat},
     io::{
         STDERR_FILENO, STDIN_FILENO, STDOUT_FILENO, WriteError, WriteVector, read, write_all,
         write_vectored,
@@ -38,6 +38,22 @@ _start:
 /// as provided to `_start`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn do_start(rsp_ptr: *const usize) -> ! {
+    let stdout_stat = loop {
+        match fstat(STDOUT_FILENO) {
+            Ok(stat) => break stat,
+            Err(errno) if errno == Errno::EINTR => continue,
+            Err(errno) => {
+                // TODO: make `write_stdout_error` accept `Errno` directly
+                // with a trait like `Describe` letting errors describe
+                // themselves.
+                let _ = write_stdout_error(WriteError::Errno(errno));
+                exit(1);
+            }
+        }
+    };
+
+    let stdout_is_regular = stdout_stat.is_regular();
+
     // SAFETY: `rsp_ptr` is valid and points to `argc` as guaranteed by the
     // function's safety contract
     let argc = unsafe { *rsp_ptr };
@@ -46,6 +62,31 @@ pub unsafe extern "C" fn do_start(rsp_ptr: *const usize) -> ! {
     let mut had_error = false;
 
     if argc == 1 {
+        if stdout_is_regular {
+            let stdin_stat_result = loop {
+                match fstat(STDIN_FILENO) {
+                    Err(errno) if errno == Errno::EINTR => continue,
+                    result => break result,
+                }
+            };
+
+            let stdin_stat = match stdin_stat_result {
+                Ok(stat) => stat,
+                Err(errno) => {
+                    let _ = write_stdin_error(errno);
+                    exit(1)
+                }
+            };
+
+            if stdin_stat.is_regular()
+                && stdin_stat.st_dev == stdout_stat.st_dev
+                && stdin_stat.st_ino == stdout_stat.st_ino
+            {
+                let _ = write_input_is_output_error(c"-");
+                exit(1);
+            }
+        }
+
         let result = stream_to_stdout(STDIN_FILENO, &mut buffer);
 
         match result {
@@ -97,6 +138,47 @@ pub unsafe extern "C" fn do_start(rsp_ptr: *const usize) -> ! {
                 }
             };
 
+            if stdout_is_regular {
+                let operand_stat_result = loop {
+                    match fstat(fd) {
+                        Err(errno) if errno == Errno::EINTR => continue,
+                        result => break result,
+                    }
+                };
+
+                let operand_stat = match operand_stat_result {
+                    Ok(stat) => stat,
+                    Err(errno) => {
+                        let _ = write_operand_error(operand, errno);
+                        had_error = true;
+
+                        if !is_stdin {
+                            if let Err(errno) = close(fd) {
+                                let _ = write_operand_error(operand, errno);
+                            }
+                        }
+
+                        continue;
+                    }
+                };
+
+                if operand_stat.is_regular()
+                    && operand_stat.st_dev == stdout_stat.st_dev
+                    && operand_stat.st_ino == stdout_stat.st_ino
+                {
+                    let _ = write_input_is_output_error(operand);
+                    had_error = true;
+
+                    if !is_stdin {
+                        if let Err(errno) = close(fd) {
+                            let _ = write_operand_error(operand, errno);
+                        }
+                    }
+
+                    continue;
+                }
+            }
+
             let result = stream_to_stdout(fd, &mut buffer);
 
             match result {
@@ -112,9 +194,7 @@ pub unsafe extern "C" fn do_start(rsp_ptr: *const usize) -> ! {
             }
 
             if !is_stdin {
-                let close_result = close(fd);
-
-                if let Err(errno) = close_result {
+                if let Err(errno) = close(fd) {
                     let _ = write_operand_error(operand, errno);
                     had_error = true;
                 }
@@ -188,7 +268,19 @@ fn write_stdout_error(error: WriteError) -> Result<(), WriteError> {
     )
 }
 
-fn write_operand_error(operand: &CStr, errno: Errno) -> Result<(), neko_rs::io::WriteError> {
+fn write_input_is_output_error(operand: &CStr) -> Result<(), WriteError> {
+    write_vectored(
+        STDERR_FILENO,
+        &mut [
+            WriteVector::from_slice(b"neko: "),
+            WriteVector::from_c_str(operand),
+            WriteVector::from_slice(": 入力ファイルが出力ファイルです".as_bytes()),
+            WriteVector::from_slice(LINE_FEED),
+        ],
+    )
+}
+
+fn write_operand_error(operand: &CStr, errno: Errno) -> Result<(), WriteError> {
     let description = errno.description().unwrap_or(UNKNOWN_ERROR_MESSAGE);
 
     if operand.is_empty() {
