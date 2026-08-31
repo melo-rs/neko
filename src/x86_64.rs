@@ -16,10 +16,10 @@ pub const SYS_OPENAT: usize = 257;
 /// [`fstat(2)`]: https://man7.org/linux/man-pages/man2/stat.2.html
 pub const SYS_FSTAT: usize = 5;
 
-/// x86-64 Linux syscall number for [`exit(2)`].
+/// x86-64 Linux syscall number for [`exit_group(2)`].
 ///
-/// [`exit(2)`]: https://man7.org/linux/man-pages/man2/_exit.2.html
-pub const SYS_EXIT: usize = 60;
+/// [`exit_group(2)`]: https://man7.org/linux/man-pages/man2/exit_group.2.html
+pub const SYS_EXIT_GROUP: usize = 231;
 
 /// x86-64 Linux syscall number for ['read(2)'].
 ///
