@@ -101,19 +101,24 @@ pub unsafe extern "C" fn do_start(rsp_ptr: *const usize) -> ! {
             }
         }
     } else {
+        // SAFETY: The initial stack is laid out as:
+        //
+        //     *const usize
+        //          │
+        //          ▼
+        //     [ argc ][ argv[0] ][ argv[1] ] ... [ NULL ]
+        //                │
+        //                └── each entry is `*const c_char`
+        //
+        // Thus advancing past `argc` and interpreting the following words as
+        // pointers gives an `*const *const c_char` pointing to `argv[0]`.
+        let argv = unsafe { rsp_ptr.add(1).cast::<*const c_char>() };
+
         for operand_index in 1..argc {
-            // SAFETY: `_start` passes the initial stack pointer to this function.
-            // Its leading words are laid out as:
-            //
-            //     [ argc ][ argv[0] ][ argv[1] ] ... [ argv[argc - 1] ][ NULL ]
-            //
-            // Thus `rsp_ptr.add(operand_index + 1)` points to
-            // `argv[operand_index]`. Every non-null argv entry points to a valid
-            // NUL-terminated string for the lifetime of the process image.
-            let operand = unsafe {
-                let operand_ptr = *rsp_ptr.add(operand_index + 1) as *const c_char;
-                CStr::from_ptr(operand_ptr)
-            };
+            // SAFETY: `operand_index < argc`, so dereferencing this argv entry
+            // is valid. Its `*const c_char` points to a NUL-terminated argument
+            // string for the lifetime of the process image.
+            let operand = unsafe { CStr::from_ptr(*argv.add(operand_index)) };
 
             let is_stdin = operand == c"-";
 
