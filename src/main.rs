@@ -61,7 +61,7 @@ pub unsafe extern "C" fn do_start(rsp_ptr: *const usize) -> ! {
     let mut buffer = [MaybeUninit::<u8>::uninit(); 4096];
     let mut had_error = false;
 
-    if argc == 1 {
+    if argc <= 1 {
         if stdout_is_regular {
             let stdin_stat_result = loop {
                 match fstat(STDIN_FILENO) {
