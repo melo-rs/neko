@@ -96,8 +96,42 @@ pub struct WriteVector<'a> {
     _lifetime: PhantomData<&'a [u8]>,
 }
 
+pub const trait Writable {
+    fn to_write_vector(&self) -> WriteVector<'_>;
+}
+
+const impl<const N: usize> Writable for [u8; N] {
+    fn to_write_vector(&'_ self) -> WriteVector<'_> {
+        WriteVector {
+            base: self.as_ptr(),
+            len: self.len(),
+            _lifetime: PhantomData,
+        }
+    }
+}
+
+const impl Writable for &[u8] {
+    fn to_write_vector(&'_ self) -> WriteVector<'_> {
+        WriteVector {
+            base: self.as_ptr(),
+            len: self.len(),
+            _lifetime: PhantomData,
+        }
+    }
+}
+
+const impl Writable for &CStr {
+    fn to_write_vector(&'_ self) -> WriteVector<'_> {
+        WriteVector {
+            base: self.as_ptr().cast(),
+            len: self.count_bytes(),
+            _lifetime: PhantomData,
+        }
+    }
+}
+
 impl<'a> WriteVector<'a> {
-    pub fn from_slice(slice: &'a [u8]) -> Self {
+    pub const fn from_slice(slice: &'a [u8]) -> Self {
         Self {
             base: slice.as_ptr(),
             len: slice.len(),
@@ -105,7 +139,7 @@ impl<'a> WriteVector<'a> {
         }
     }
 
-    pub fn from_c_str(c_str: &'a CStr) -> Self {
+    pub const fn from_c_str(c_str: &'a CStr) -> Self {
         Self {
             base: c_str.as_ptr().cast(),
             len: c_str.count_bytes(),

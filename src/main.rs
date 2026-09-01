@@ -11,7 +11,8 @@ use neko_rs::{
     error::Errno,
     fs::{close, fstat, openat},
     io::{
-        STDERR_FILENO, STDIN_FILENO, STDOUT_FILENO, WriteVector, read, write_all, write_vectored,
+        STDERR_FILENO, STDIN_FILENO, STDOUT_FILENO, Writable, WriteVector, read, write_all,
+        write_vectored,
     },
     process::exit,
     x86_64::AT_FDCWD,
@@ -42,7 +43,7 @@ pub unsafe extern "C" fn do_start(rsp_ptr: *const usize) -> ! {
             Ok(stat) => break stat,
             Err(errno) if errno == Errno::EINTR => continue,
             Err(errno) => {
-                let _ = write_stdout_error(errno);
+                let _ = error(&b"neko", errno);
                 terminate_after_stdout_failure(1);
             }
         }
@@ -88,7 +89,7 @@ pub unsafe extern "C" fn do_start(rsp_ptr: *const usize) -> ! {
         match result {
             Ok(()) => {}
             Err(StreamError::Read(errno)) => {
-                let _ = write_stdin_error(errno);
+                let _ = error(b"-", errno);
                 had_error = true
             }
             Err(StreamError::Write(error)) => {
@@ -251,6 +252,8 @@ fn write_stdin_error(errno: Errno) -> Result<(), Errno> {
     )
 }
 
+// error()
+
 fn write_stdout_error(errno: Errno) -> Result<(), Errno> {
     write_vectored(
         STDERR_FILENO,
@@ -295,6 +298,53 @@ fn write_operand_error(operand: &CStr, errno: Errno) -> Result<(), Errno> {
                 WriteVector::from_slice(b": "),
                 WriteVector::from_slice(description),
                 WriteVector::from_slice(LINE_FEED),
+            ],
+        )
+    }
+}
+
+fn error<S>(context: S, errno: Errno) -> Result<(), Errno>
+where
+    S: Writable {
+    let metadata = errno.metadata();
+
+    if metadata.is_unknown {
+        let mut buffer = [0u8; 5];
+        let mut n = errno.0;
+        let mut start = buffer.len();
+
+        loop {
+            start -= 1;
+            buffer[start] = b'0' + (n % 10) as u8;
+            n /= 10;
+
+            if n == 0 {
+                break
+            }
+        }
+
+        let errno_as_slice: &[u8] = &buffer[start..];
+
+        write_vectored(
+            STDERR_FILENO,
+            &mut [
+                b"neko: ".to_write_vector(),
+                context.to_write_vector(),
+                b": ".to_write_vector(),
+                metadata.reason.to_write_vector(),
+                errno_as_slice.to_write_vector(),
+                b"\n".to_write_vector(),
+            ],
+        )
+    } else {
+        write_vectored(
+            STDERR_FILENO,
+            &mut [
+                b"neko: ".to_write_vector(),
+                context.to_write_vector(),
+                b": ".to_write_vector(),
+                metadata.reason.to_write_vector(),
+                b"\n".to_write_vector(),
             ],
         )
     }
