@@ -47,7 +47,7 @@ pub unsafe extern "C" fn do_start(rsp_ptr: *const usize) -> ! {
                 // with a trait like `Describe` letting errors describe
                 // themselves.
                 let _ = write_stdout_error(WriteError::Errno(errno));
-                exit(1);
+                terminate_after_stdout_failure(1);
             }
         }
     };
@@ -74,7 +74,7 @@ pub unsafe extern "C" fn do_start(rsp_ptr: *const usize) -> ! {
                 Ok(stat) => stat,
                 Err(errno) => {
                     let _ = write_stdin_error(errno);
-                    exit(1)
+                    terminate(1)
                 }
             };
 
@@ -83,7 +83,7 @@ pub unsafe extern "C" fn do_start(rsp_ptr: *const usize) -> ! {
                 && stdin_stat.st_ino == stdout_stat.st_ino
             {
                 let _ = write_input_is_output_error(c"-");
-                exit(1);
+                terminate(1);
             }
         }
 
@@ -97,7 +97,7 @@ pub unsafe extern "C" fn do_start(rsp_ptr: *const usize) -> ! {
             }
             Err(StreamError::Write(error)) => {
                 let _ = write_stdout_error(error);
-                exit(1);
+                terminate_after_stdout_failure(1);
             }
         }
     } else {
@@ -194,7 +194,7 @@ pub unsafe extern "C" fn do_start(rsp_ptr: *const usize) -> ! {
                 }
                 Err(StreamError::Write(error)) => {
                     let _ = write_stdout_error(error);
-                    exit(1);
+                    terminate_after_stdout_failure(1);
                 }
             }
 
@@ -207,7 +207,7 @@ pub unsafe extern "C" fn do_start(rsp_ptr: *const usize) -> ! {
         }
     }
 
-    exit(if had_error { 1 } else { 0 });
+    terminate(if had_error { 1 } else { 0 });
 }
 
 enum StreamError {
@@ -309,4 +309,30 @@ fn write_operand_error(operand: &CStr, errno: Errno) -> Result<(), WriteError> {
             ],
         )
     }
+}
+
+fn do_terminate(status: usize, suppress_close_error: bool) -> ! {
+    let mut status = status;
+
+    if let Err(errno) = close(STDOUT_FILENO) {
+        if !suppress_close_error {
+            let _ = write_stdout_error(WriteError::Errno(errno));
+        }
+
+        status = 1;
+    }
+
+    if close(STDERR_FILENO).is_err() {
+        status = 1;
+    }
+
+    exit(status)
+}
+
+fn terminate(status: usize) -> ! {
+    do_terminate(status, false)
+}
+
+fn terminate_after_stdout_failure(status: usize) -> ! {
+    do_terminate(status, true)
 }
