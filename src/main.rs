@@ -11,8 +11,7 @@ use neko_rs::{
     error::Errno,
     fs::{close, fstat, openat},
     io::{
-        STDERR_FILENO, STDIN_FILENO, STDOUT_FILENO, WriteError, WriteVector, read, write_all,
-        write_vectored,
+        STDERR_FILENO, STDIN_FILENO, STDOUT_FILENO, WriteVector, read, write_all, write_vectored,
     },
     process::exit,
     x86_64::AT_FDCWD,
@@ -43,10 +42,7 @@ pub unsafe extern "C" fn do_start(rsp_ptr: *const usize) -> ! {
             Ok(stat) => break stat,
             Err(errno) if errno == Errno::EINTR => continue,
             Err(errno) => {
-                // TODO: make `write_stdout_error` accept `Errno` directly
-                // with a trait like `Describe` letting errors describe
-                // themselves.
-                let _ = write_stdout_error(WriteError::Errno(errno));
+                let _ = write_stdout_error(errno);
                 terminate_after_stdout_failure(1);
             }
         }
@@ -192,8 +188,8 @@ pub unsafe extern "C" fn do_start(rsp_ptr: *const usize) -> ! {
                     let _ = write_operand_error(operand, errno);
                     had_error = true
                 }
-                Err(StreamError::Write(error)) => {
-                    let _ = write_stdout_error(error);
+                Err(StreamError::Write(errno)) => {
+                    let _ = write_stdout_error(errno);
                     terminate_after_stdout_failure(1);
                 }
             }
@@ -212,7 +208,7 @@ pub unsafe extern "C" fn do_start(rsp_ptr: *const usize) -> ! {
 
 enum StreamError {
     Read(Errno),
-    Write(WriteError),
+    Write(Errno),
 }
 
 fn stream_to_stdout(fd: i32, buffer: &mut [MaybeUninit<u8>]) -> Result<(), StreamError> {
@@ -235,8 +231,8 @@ fn stream_to_stdout(fd: i32, buffer: &mut [MaybeUninit<u8>]) -> Result<(), Strea
 
         let result = write_all(STDOUT_FILENO, initialized);
 
-        if let Err(error) = result {
-            break Err(StreamError::Write(error));
+        if let Err(errno) = result {
+            break Err(StreamError::Write(errno));
         }
     }
 }
@@ -244,7 +240,7 @@ fn stream_to_stdout(fd: i32, buffer: &mut [MaybeUninit<u8>]) -> Result<(), Strea
 const UNKNOWN_ERROR_MESSAGE: &[u8] = b"unknown error";
 const LINE_FEED: &[u8] = b"\n";
 
-fn write_stdin_error(errno: Errno) -> Result<(), WriteError> {
+fn write_stdin_error(errno: Errno) -> Result<(), Errno> {
     write_vectored(
         STDERR_FILENO,
         &mut [
@@ -255,25 +251,18 @@ fn write_stdin_error(errno: Errno) -> Result<(), WriteError> {
     )
 }
 
-fn write_stdout_error(error: WriteError) -> Result<(), WriteError> {
+fn write_stdout_error(errno: Errno) -> Result<(), Errno> {
     write_vectored(
         STDERR_FILENO,
         &mut [
             WriteVector::from_slice(b"neko: stdout: "),
-            match error {
-                WriteError::WriteZero => {
-                    WriteVector::from_slice("書き込みに失敗しました".as_bytes())
-                }
-                WriteError::Errno(errno) => {
-                    WriteVector::from_slice(errno.description().unwrap_or(UNKNOWN_ERROR_MESSAGE))
-                }
-            },
+            WriteVector::from_slice(errno.description().unwrap_or(UNKNOWN_ERROR_MESSAGE)),
             WriteVector::from_slice(LINE_FEED),
         ],
     )
 }
 
-fn write_input_is_output_error(operand: &CStr) -> Result<(), WriteError> {
+fn write_input_is_output_error(operand: &CStr) -> Result<(), Errno> {
     write_vectored(
         STDERR_FILENO,
         &mut [
@@ -285,7 +274,7 @@ fn write_input_is_output_error(operand: &CStr) -> Result<(), WriteError> {
     )
 }
 
-fn write_operand_error(operand: &CStr, errno: Errno) -> Result<(), WriteError> {
+fn write_operand_error(operand: &CStr, errno: Errno) -> Result<(), Errno> {
     let description = errno.description().unwrap_or(UNKNOWN_ERROR_MESSAGE);
 
     if operand.is_empty() {
@@ -316,7 +305,7 @@ fn do_terminate(status: usize, suppress_close_error: bool) -> ! {
 
     if let Err(errno) = close(STDOUT_FILENO) {
         if !suppress_close_error {
-            let _ = write_stdout_error(WriteError::Errno(errno));
+            let _ = write_stdout_error(errno);
         }
 
         status = 1;

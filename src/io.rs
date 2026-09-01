@@ -139,10 +139,16 @@ pub fn writev(fd: i32, vectors: &[WriteVector]) -> Result<usize, Errno> {
     }
 }
 
-pub enum WriteError {
-    Errno(Errno),
-    WriteZero,
-}
+/// Error used when a non-empty write reports zero bytes written.
+///
+/// Following GNU coreutils, zero progress is treated as `ENOSPC`.
+/// Historically, some buggy device drivers, such as Linux 1.2.13's `/dev/fd0`,
+/// returned zero when attempting to write beyond the end of a device instead
+/// of reporting an error.
+///
+/// Treating this as an error also prevents write loops from retrying forever
+/// when the underlying descriptor makes no progress.
+pub const ZERO_PROGRESS_WRITE_ERRNO: Errno = Errno::ENOSPC;
 
 /// Writes the entire `buffer` to the given file descriptor.
 ///
@@ -151,14 +157,14 @@ pub enum WriteError {
 /// that is not [`Errno::EINTR`] generated from this function will be returned.
 ///
 /// This function will never call [`write()`] if the buffer contains no data.
-pub fn write_all(fd: i32, buffer: &[u8]) -> Result<(), WriteError> {
+pub fn write_all(fd: i32, buffer: &[u8]) -> Result<(), Errno> {
     let mut offset = 0usize;
 
     while offset < buffer.len() {
         match write(fd, &buffer[offset..]) {
             Err(errno) if errno == Errno::EINTR => continue,
-            Err(errno) => return Err(WriteError::Errno(errno)),
-            Ok(0) => return Err(WriteError::WriteZero),
+            Err(errno) => return Err(errno),
+            Ok(0) => return Err(ZERO_PROGRESS_WRITE_ERRNO),
             Ok(written) => offset += written,
         }
     }
@@ -179,7 +185,7 @@ pub fn write_all(fd: i32, buffer: &[u8]) -> Result<(), WriteError> {
 /// Callers handling user-provided content must replace empty values with an
 /// appropriate non-empty representation before constructing the vectors.
 /// For example, an empty file operand may be displayed as `''`.
-pub fn write_vectored(fd: i32, vectors: &mut [WriteVector]) -> Result<(), WriteError> {
+pub fn write_vectored(fd: i32, vectors: &mut [WriteVector]) -> Result<(), Errno> {
     let mut offset = 0usize;
 
     while offset < vectors.len() {
@@ -187,8 +193,8 @@ pub fn write_vectored(fd: i32, vectors: &mut [WriteVector]) -> Result<(), WriteE
 
         match writev(fd, remaining) {
             Err(errno) if errno == Errno::EINTR => continue,
-            Err(errno) => return Err(WriteError::Errno(errno)),
-            Ok(0) => return Err(WriteError::WriteZero),
+            Err(errno) => return Err(errno),
+            Ok(0) => return Err(ZERO_PROGRESS_WRITE_ERRNO),
             Ok(mut written) => {
                 for item in remaining.iter_mut() {
                     if item.len < written {
