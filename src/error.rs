@@ -1,6 +1,6 @@
 use crate::{
     errno::Errno,
-    io::{STDERR_FILENO, ToWriteVector},
+    io::ToWriteVector,
 };
 
 pub trait Error {
