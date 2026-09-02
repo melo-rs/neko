@@ -4,6 +4,24 @@ pub trait Error {
     fn write_to_stderr(&self) -> Result<(), Errno>;
 }
 
+macro_rules! eprintln {
+    ($($arg:expr),+ $(,)?) => {
+        {
+            use $crate::io::ToWriteVector as _;
+
+            $crate::io::write_vectored(
+                $crate::io::STDERR_FILENO,
+                &mut [
+                    $(
+                        $arg.to_write_vector(),
+                    )+
+                    b"\n".to_write_vector(),
+                ],
+            )
+        }
+    };
+}
+
 impl<T1, T2> Error for (T1, T2)
 where
     T1: ToWriteVector,
