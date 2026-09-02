@@ -1,5 +1,5 @@
 use crate::{
-    error::Errno,
+    errno::Errno,
     x86_64::{SYS_CLOSE, SYS_FSTAT, SYS_OPENAT},
 };
 use core::{arch::asm, ffi::CStr, mem::MaybeUninit};
@@ -40,7 +40,7 @@ pub fn openat(dirfd: i32, pathname: &CStr, flags: i32, mode: u32) -> Result<i32,
 ///
 /// [`fstat(2)`]: https://man7.org/linux/man-pages/man2/stat.2.html
 #[repr(C)]
-pub struct Stat {
+pub struct Metadata {
     pub st_dev: u64,
     pub st_ino: u64,
     pub st_nlink: u64,
@@ -65,11 +65,11 @@ pub struct Stat {
     __unused: [i64; 3],
 }
 
-const S_IFMT: u32 = 0o170000;
+impl Metadata {
+    pub const fn is_file(&self) -> bool {
+        const S_IFMT: u32 = 0o170000;
 const S_IFREG: u32 = 0o100000;
 
-impl Stat {
-    pub const fn is_regular(&self) -> bool {
         self.st_mode & S_IFMT == S_IFREG
     }
 }
@@ -78,8 +78,8 @@ impl Stat {
 /// [`fstat(2)`] system call.
 ///
 /// [`fstat(2)`]: https://man7.org/linux/man-pages/man2/stat.2.html
-pub fn fstat(fd: i32) -> Result<Stat, Errno> {
-    let mut buffer = MaybeUninit::<Stat>::uninit();
+pub fn fstat(fd: i32) -> Result<Metadata, Errno> {
+    let mut buffer = MaybeUninit::<Metadata>::uninit();
     let result: isize;
 
     // SAFETY: `buffer` provides valid writable memory for one `Stat`, and the

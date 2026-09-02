@@ -8,12 +8,10 @@ use core::{
     panic::PanicInfo,
 };
 use neko_rs::{
-    error::Errno,
+    errno::Errno,
+    error::Error,
     fs::{close, fstat, openat},
-    io::{
-        STDERR_FILENO, STDIN_FILENO, STDOUT_FILENO, Writable, WriteVector, read, write_all,
-        write_vectored,
-    },
+    io::{STDERR_FILENO, STDIN_FILENO, STDOUT_FILENO, read, write_all},
     process::exit,
     x86_64::AT_FDCWD,
 };
@@ -43,13 +41,13 @@ pub unsafe extern "C" fn do_start(rsp_ptr: *const usize) -> ! {
             Ok(stat) => break stat,
             Err(errno) if errno == Errno::EINTR => continue,
             Err(errno) => {
-                let _ = error(&b"neko", errno);
-                terminate_after_stdout_failure(1);
+                let _ = write_error("標準出力".as_bytes(), errno);
+                terminate_after_stdout_failure();
             }
         }
     };
 
-    let stdout_is_regular = stdout_stat.is_regular();
+    let stdout_is_file = stdout_stat.is_file();
 
     // SAFETY: `rsp_ptr` is valid and points to `argc` as guaranteed by the
     // function's safety contract
@@ -59,7 +57,7 @@ pub unsafe extern "C" fn do_start(rsp_ptr: *const usize) -> ! {
     let mut had_error = false;
 
     if argc <= 1 {
-        if stdout_is_regular {
+        if stdout_is_file {
             let stdin_stat_result = loop {
                 match fstat(STDIN_FILENO) {
                     Err(errno) if errno == Errno::EINTR => continue,
@@ -70,16 +68,16 @@ pub unsafe extern "C" fn do_start(rsp_ptr: *const usize) -> ! {
             let stdin_stat = match stdin_stat_result {
                 Ok(stat) => stat,
                 Err(errno) => {
-                    let _ = write_stdin_error(errno);
+                    let _ = write_error(b"-", errno);
                     terminate(1)
                 }
             };
 
-            if stdin_stat.is_regular()
+            if stdin_stat.is_file()
                 && stdin_stat.st_dev == stdout_stat.st_dev
                 && stdin_stat.st_ino == stdout_stat.st_ino
             {
-                let _ = write_input_is_output_error(c"-");
+                let _ = write_error(b"-", "入力ファイルが出力ファイルです".as_bytes());
                 terminate(1);
             }
         }
@@ -89,12 +87,12 @@ pub unsafe extern "C" fn do_start(rsp_ptr: *const usize) -> ! {
         match result {
             Ok(()) => {}
             Err(StreamError::Read(errno)) => {
-                let _ = error(b"-", errno);
+                let _ = write_error(b"-", errno);
                 had_error = true
             }
-            Err(StreamError::Write(error)) => {
-                let _ = write_stdout_error(error);
-                terminate_after_stdout_failure(1);
+            Err(StreamError::Write(errno)) => {
+                let _ = write_error("書き込みエラー".as_bytes(), errno);
+                terminate_after_stdout_failure();
             }
         }
     } else {
@@ -111,19 +109,19 @@ pub unsafe extern "C" fn do_start(rsp_ptr: *const usize) -> ! {
         // pointers gives an `*const *const c_char` pointing to `argv[0]`.
         let argv = unsafe { rsp_ptr.add(1).cast::<*const c_char>() };
 
-        for operand_index in 1..argc {
-            // SAFETY: `operand_index < argc`, so dereferencing this argv entry
+        for input_index in 1..argc {
+            // SAFETY: `input_index < argc`, so dereferencing this argv entry
             // is valid. Its `*const c_char` points to a NUL-terminated argument
             // string for the lifetime of the process image.
-            let operand = unsafe { CStr::from_ptr(*argv.add(operand_index)) };
+            let input = unsafe { CStr::from_ptr(*argv.add(input_index)) };
 
-            let is_stdin = operand == c"-";
+            let is_stdin = input == c"-";
 
             let fd = if is_stdin {
                 STDIN_FILENO
             } else {
                 let openat_result = loop {
-                    match openat(AT_FDCWD, operand, 0, 0) {
+                    match openat(AT_FDCWD, input, 0, 0) {
                         Err(errno) if errno == Errno::EINTR => continue,
                         result => break result,
                     }
@@ -132,7 +130,7 @@ pub unsafe extern "C" fn do_start(rsp_ptr: *const usize) -> ! {
                 match openat_result {
                     Ok(fd) => fd,
                     Err(errno) => {
-                        let _ = write_operand_error(operand, errno);
+                        let _ = write_input_error(input, errno);
                         had_error = true;
 
                         continue;
@@ -140,23 +138,23 @@ pub unsafe extern "C" fn do_start(rsp_ptr: *const usize) -> ! {
                 }
             };
 
-            if stdout_is_regular {
-                let operand_stat_result = loop {
+            if stdout_is_file {
+                let input_stat_result = loop {
                     match fstat(fd) {
                         Err(errno) if errno == Errno::EINTR => continue,
                         result => break result,
                     }
                 };
 
-                let operand_stat = match operand_stat_result {
+                let input_stat = match input_stat_result {
                     Ok(stat) => stat,
                     Err(errno) => {
-                        let _ = write_operand_error(operand, errno);
+                        let _ = write_input_error(input, errno);
                         had_error = true;
 
                         if !is_stdin {
                             if let Err(errno) = close(fd) {
-                                let _ = write_operand_error(operand, errno);
+                                let _ = write_input_error(input, errno);
                             }
                         }
 
@@ -164,16 +162,16 @@ pub unsafe extern "C" fn do_start(rsp_ptr: *const usize) -> ! {
                     }
                 };
 
-                if operand_stat.is_regular()
-                    && operand_stat.st_dev == stdout_stat.st_dev
-                    && operand_stat.st_ino == stdout_stat.st_ino
+                if input_stat.is_file()
+                    && input_stat.st_dev == stdout_stat.st_dev
+                    && input_stat.st_ino == stdout_stat.st_ino
                 {
-                    let _ = write_input_is_output_error(operand);
+                    let _ = write_input_error(input, "入力ファイルが出力ファイルです".as_bytes());
                     had_error = true;
 
                     if !is_stdin {
                         if let Err(errno) = close(fd) {
-                            let _ = write_operand_error(operand, errno);
+                            let _ = write_input_error(input, errno);
                         }
                     }
 
@@ -186,18 +184,18 @@ pub unsafe extern "C" fn do_start(rsp_ptr: *const usize) -> ! {
             match result {
                 Ok(()) => {}
                 Err(StreamError::Read(errno)) => {
-                    let _ = write_operand_error(operand, errno);
+                    let _ = write_input_error(input, errno);
                     had_error = true
                 }
                 Err(StreamError::Write(errno)) => {
-                    let _ = write_stdout_error(errno);
-                    terminate_after_stdout_failure(1);
+                    let _ = write_error("書き込みエラー".as_bytes(), errno);
+                    terminate_after_stdout_failure();
                 }
             }
 
             if !is_stdin {
                 if let Err(errno) = close(fd) {
-                    let _ = write_operand_error(operand, errno);
+                    let _ = write_input_error(input, errno);
                     had_error = true;
                 }
             }
@@ -238,116 +236,19 @@ fn stream_to_stdout(fd: i32, buffer: &mut [MaybeUninit<u8>]) -> Result<(), Strea
     }
 }
 
-const UNKNOWN_ERROR_MESSAGE: &[u8] = b"unknown error";
-const LINE_FEED: &[u8] = b"\n";
-
-fn write_stdin_error(errno: Errno) -> Result<(), Errno> {
-    write_vectored(
-        STDERR_FILENO,
-        &mut [
-            WriteVector::from_slice(b"neko: -: "),
-            WriteVector::from_slice(errno.description().unwrap_or(UNKNOWN_ERROR_MESSAGE)),
-            WriteVector::from_slice(LINE_FEED),
-        ],
-    )
-}
-
-// error()
-
-fn write_stdout_error(errno: Errno) -> Result<(), Errno> {
-    write_vectored(
-        STDERR_FILENO,
-        &mut [
-            WriteVector::from_slice(b"neko: stdout: "),
-            WriteVector::from_slice(errno.description().unwrap_or(UNKNOWN_ERROR_MESSAGE)),
-            WriteVector::from_slice(LINE_FEED),
-        ],
-    )
-}
-
-fn write_input_is_output_error(operand: &CStr) -> Result<(), Errno> {
-    write_vectored(
-        STDERR_FILENO,
-        &mut [
-            WriteVector::from_slice(b"neko: "),
-            WriteVector::from_c_str(operand),
-            WriteVector::from_slice(": 入力ファイルが出力ファイルです".as_bytes()),
-            WriteVector::from_slice(LINE_FEED),
-        ],
-    )
-}
-
-fn write_operand_error(operand: &CStr, errno: Errno) -> Result<(), Errno> {
-    let description = errno.description().unwrap_or(UNKNOWN_ERROR_MESSAGE);
-
-    if operand.is_empty() {
-        write_vectored(
-            STDERR_FILENO,
-            &mut [
-                WriteVector::from_slice(b"neko: '': "),
-                WriteVector::from_slice(description),
-                WriteVector::from_slice(LINE_FEED),
-            ],
-        )
-    } else {
-        write_vectored(
-            STDERR_FILENO,
-            &mut [
-                WriteVector::from_slice(b"neko: "),
-                WriteVector::from_c_str(operand),
-                WriteVector::from_slice(b": "),
-                WriteVector::from_slice(description),
-                WriteVector::from_slice(LINE_FEED),
-            ],
-        )
-    }
-}
-
-fn error<S>(context: S, errno: Errno) -> Result<(), Errno>
+fn write_error<C, E>(context: C, error: E) -> Result<(), Errno>
 where
-    S: Writable {
-    let metadata = errno.metadata();
+    (C, E): Error,
+{
+    (context, error).write_to_stderr()
+}
 
-    if metadata.is_unknown {
-        let mut buffer = [0u8; 5];
-        let mut n = errno.0;
-        let mut start = buffer.len();
-
-        loop {
-            start -= 1;
-            buffer[start] = b'0' + (n % 10) as u8;
-            n /= 10;
-
-            if n == 0 {
-                break
-            }
-        }
-
-        let errno_as_slice: &[u8] = &buffer[start..];
-
-        write_vectored(
-            STDERR_FILENO,
-            &mut [
-                b"neko: ".to_write_vector(),
-                context.to_write_vector(),
-                b": ".to_write_vector(),
-                metadata.reason.to_write_vector(),
-                errno_as_slice.to_write_vector(),
-                b"\n".to_write_vector(),
-            ],
-        )
-    } else {
-        write_vectored(
-            STDERR_FILENO,
-            &mut [
-                b"neko: ".to_write_vector(),
-                context.to_write_vector(),
-                b": ".to_write_vector(),
-                metadata.reason.to_write_vector(),
-                b"\n".to_write_vector(),
-            ],
-        )
-    }
+fn write_input_error<'a, E>(input: &'a CStr, error: E) -> Result<(), Errno>
+where
+    (&'a CStr, E): Error,
+{
+    let context = if input.is_empty() { c"''" } else { input };
+    (context, error).write_to_stderr()
 }
 
 fn do_terminate(status: usize, suppress_close_error: bool) -> ! {
@@ -355,7 +256,7 @@ fn do_terminate(status: usize, suppress_close_error: bool) -> ! {
 
     if let Err(errno) = close(STDOUT_FILENO) {
         if !suppress_close_error {
-            let _ = write_stdout_error(errno);
+            let _ = write_error("標準出力を閉じています".as_bytes(), errno);
         }
 
         status = 1;
@@ -372,6 +273,6 @@ fn terminate(status: usize) -> ! {
     do_terminate(status, false)
 }
 
-fn terminate_after_stdout_failure(status: usize) -> ! {
-    do_terminate(status, true)
+fn terminate_after_stdout_failure() -> ! {
+    do_terminate(1, true)
 }

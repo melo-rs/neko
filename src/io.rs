@@ -1,5 +1,5 @@
 use crate::{
-    error::Errno,
+    errno::Errno,
     x86_64::{SYS_READ, SYS_WRITE, SYS_WRITEV},
 };
 use core::{arch::asm, ffi::CStr, marker::PhantomData, mem::MaybeUninit};
@@ -96,12 +96,12 @@ pub struct WriteVector<'a> {
     _lifetime: PhantomData<&'a [u8]>,
 }
 
-pub const trait Writable {
+pub const trait ToWriteVector {
     fn to_write_vector(&self) -> WriteVector<'_>;
 }
 
-const impl<const N: usize> Writable for [u8; N] {
-    fn to_write_vector(&'_ self) -> WriteVector<'_> {
+const impl<const N: usize> ToWriteVector for &[u8; N] {
+    fn to_write_vector(&self) -> WriteVector<'_> {
         WriteVector {
             base: self.as_ptr(),
             len: self.len(),
@@ -110,8 +110,8 @@ const impl<const N: usize> Writable for [u8; N] {
     }
 }
 
-const impl Writable for &[u8] {
-    fn to_write_vector(&'_ self) -> WriteVector<'_> {
+const impl ToWriteVector for &[u8] {
+    fn to_write_vector(&self) -> WriteVector<'_> {
         WriteVector {
             base: self.as_ptr(),
             len: self.len(),
@@ -120,8 +120,8 @@ const impl Writable for &[u8] {
     }
 }
 
-const impl Writable for &CStr {
-    fn to_write_vector(&'_ self) -> WriteVector<'_> {
+const impl ToWriteVector for &CStr {
+    fn to_write_vector(&self) -> WriteVector<'_> {
         WriteVector {
             base: self.as_ptr().cast(),
             len: self.count_bytes(),
