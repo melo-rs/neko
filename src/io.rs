@@ -186,7 +186,7 @@ pub const ZERO_PROGRESS_WRITE_ERRNO: Errno = Errno::ENOSPC;
 
 /// Writes the entire `buffer` to the given file descriptor.
 ///
-/// This function will continuously calls [`write()`] until there is no more data to
+/// This function will continuously call [`write()`] until there is no more data to
 /// be written or an error other than [`Errno::EINTR`] is returned. The first error
 /// that is not [`Errno::EINTR`] generated from this function will be returned.
 ///
@@ -206,23 +206,36 @@ pub fn write_all(fd: i32, buffer: &[u8]) -> Result<(), Errno> {
     Ok(())
 }
 
-/// Writes all vectors to `fd`, retrying interrupted and partial writes.
+/// Writes all data described by `vectors` to the given file descriptor.
 ///
-/// # Empty vectors
+/// This function will continuously call [`writev()`] until there is no more data
+/// to be written or an error other than [`Errno::EINTR`] is returned. Partial
+/// writes are handled by advancing through and, when necessary, modifying the
+/// remaining vectors. The first error other than `EINTR` is returned.
 ///
-/// All vectors passed to this function must have a non-zero length.
+/// Empty vectors are skipped. This function will never call [`writev()`] if
+/// `vectors` contains no data.
 ///
-/// `write_vectored` treats a zero-byte write as [`WriteError::WriteZero`].
-/// Therefore, a trailing empty vector may cause `WriteZero` even after all
-/// non-empty data has been written successfully.
+/// If [`writev()`] reports that zero bytes were written while non-empty data
+/// remains, [`ZERO_PROGRESS_WRITE_ERRNO`] is returned.
 ///
-/// Callers handling user-provided content must replace empty values with an
-/// appropriate non-empty representation before constructing the vectors.
-/// For example, an empty file operand may be displayed as `''`.
+/// # Mutation
+///
+/// To account for partial writes, this function may advance the base pointer and
+/// reduce the length of a partially written vector. Callers should not rely on
+/// `vectors` retaining its original state after this function returns.
 pub fn write_vectored(fd: i32, vectors: &mut [WriteVector]) -> Result<(), Errno> {
     let mut offset = 0usize;
 
     while offset < vectors.len() {
+        while offset < vectors.len() && vectors[offset].len == 0 {
+            offset += 1;
+        }
+
+        if offset == vectors.len() {
+            break;
+        }
+
         let remaining = &mut vectors[offset..];
 
         match writev(fd, remaining) {
