@@ -13,6 +13,7 @@ use neko_rs::{
     fs::{close, fstat, openat},
     io::{STDERR_FILENO, STDIN_FILENO, STDOUT_FILENO, read, write_all},
     process::exit,
+    retries::retry_on_eintr,
     x86_64::AT_FDCWD,
 };
 
@@ -36,18 +37,17 @@ _start:
 /// as provided to `_start`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn do_start(rsp_ptr: *const usize) -> ! {
-    let stdout_stat = loop {
-        match fstat(STDOUT_FILENO) {
-            Ok(stat) => break stat,
-            Err(errno) if errno == Errno::EINTR => continue,
-            Err(errno) => {
-                let _ = write_error("標準出力".as_bytes(), errno);
-                terminate_after_stdout_failure();
-            }
+    let stdout_metadata_result = retry_on_eintr(|| fstat(STDOUT_FILENO));
+
+    let stdout_metadata = match stdout_metadata_result {
+        Ok(metadata) => metadata,
+        Err(errno) => {
+            let _ = write_error("標準出力".as_bytes(), errno);
+            terminate_after_stdout_failure();
         }
     };
 
-    let stdout_is_file = stdout_stat.is_file();
+    let stdout_is_file = stdout_metadata.is_file();
 
     // SAFETY: `rsp_ptr` is valid and points to `argc` as guaranteed by the
     // function's safety contract
@@ -58,24 +58,19 @@ pub unsafe extern "C" fn do_start(rsp_ptr: *const usize) -> ! {
 
     if argc <= 1 {
         if stdout_is_file {
-            let stdin_stat_result = loop {
-                match fstat(STDIN_FILENO) {
-                    Err(errno) if errno == Errno::EINTR => continue,
-                    result => break result,
-                }
-            };
+            let stdin_metadata_result = retry_on_eintr(|| fstat(STDIN_FILENO));
 
-            let stdin_stat = match stdin_stat_result {
-                Ok(stat) => stat,
+            let stdin_metadata = match stdin_metadata_result {
+                Ok(metadata) => metadata,
                 Err(errno) => {
                     let _ = write_error(b"-", errno);
                     terminate(1)
                 }
             };
 
-            if stdin_stat.is_file()
-                && stdin_stat.st_dev == stdout_stat.st_dev
-                && stdin_stat.st_ino == stdout_stat.st_ino
+            if stdin_metadata.is_file()
+                && stdin_metadata.st_dev == stdout_metadata.st_dev
+                && stdin_metadata.st_ino == stdout_metadata.st_ino
             {
                 let _ = write_error(b"-", "入力ファイルが出力ファイルです".as_bytes());
                 terminate(1);
@@ -120,12 +115,7 @@ pub unsafe extern "C" fn do_start(rsp_ptr: *const usize) -> ! {
             let fd = if is_stdin {
                 STDIN_FILENO
             } else {
-                let openat_result = loop {
-                    match openat(AT_FDCWD, input, 0, 0) {
-                        Err(errno) if errno == Errno::EINTR => continue,
-                        result => break result,
-                    }
-                };
+                let openat_result = retry_on_eintr(|| openat(AT_FDCWD, input, 0, 0));
 
                 match openat_result {
                     Ok(fd) => fd,
@@ -139,15 +129,10 @@ pub unsafe extern "C" fn do_start(rsp_ptr: *const usize) -> ! {
             };
 
             if stdout_is_file {
-                let input_stat_result = loop {
-                    match fstat(fd) {
-                        Err(errno) if errno == Errno::EINTR => continue,
-                        result => break result,
-                    }
-                };
+                let input_metadata_result = retry_on_eintr(|| fstat(fd));
 
-                let input_stat = match input_stat_result {
-                    Ok(stat) => stat,
+                let input_metadata = match input_metadata_result {
+                    Ok(metadata) => metadata,
                     Err(errno) => {
                         let _ = write_input_error(input, errno);
                         had_error = true;
@@ -162,9 +147,9 @@ pub unsafe extern "C" fn do_start(rsp_ptr: *const usize) -> ! {
                     }
                 };
 
-                if input_stat.is_file()
-                    && input_stat.st_dev == stdout_stat.st_dev
-                    && input_stat.st_ino == stdout_stat.st_ino
+                if input_metadata.is_file()
+                    && input_metadata.st_dev == stdout_metadata.st_dev
+                    && input_metadata.st_ino == stdout_metadata.st_ino
                 {
                     let _ = write_input_error(input, "入力ファイルが出力ファイルです".as_bytes());
                     had_error = true;

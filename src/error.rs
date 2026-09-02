@@ -1,7 +1,4 @@
-use crate::{
-    errno::Errno,
-    io::ToWriteVector,
-};
+use crate::{errno::Errno, io::ToWriteVector};
 
 pub trait Error {
     fn write_to_stderr(&self) -> Result<(), Errno>;
@@ -41,7 +38,14 @@ where
 
             let number_as_slice: &[u8] = &buffer[start..];
 
-            eprintln!(b"neko: ", context, b": ", errno.cause(), b" ", number_as_slice)
+            eprintln!(
+                b"neko: ",
+                context,
+                b": ",
+                errno.cause(),
+                b" ",
+                number_as_slice
+            )
         } else {
             eprintln!(b"neko: ", context, b": ", errno.cause(),)
         }

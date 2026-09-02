@@ -68,7 +68,7 @@ pub struct Metadata {
 impl Metadata {
     pub const fn is_file(&self) -> bool {
         const S_IFMT: u32 = 0o170000;
-const S_IFREG: u32 = 0o100000;
+        const S_IFREG: u32 = 0o100000;
 
         self.st_mode & S_IFMT == S_IFREG
     }
