@@ -228,13 +228,11 @@ pub fn write_vectored(fd: i32, vectors: &mut [WriteVector]) -> Result<(), Errno>
     let mut offset = 0usize;
 
     while offset < vectors.len() {
-        while offset < vectors.len() && vectors[offset].len == 0 {
-            offset += 1;
-        }
-
-        if offset == vectors.len() {
+        let Some(next) = vectors[offset..].iter().position(|vector| vector.len != 0) else {
             break;
-        }
+        };
+
+        offset += next;
 
         let remaining = &mut vectors[offset..];
 
