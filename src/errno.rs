@@ -38,7 +38,7 @@ macro_rules! errno_codes {
     };
 }
 
-// TODO: add `EXFULL` and `EHWPOISON`
+// TODO: translate `EXFULL` and `EHWPOISON`
 errno_codes! {
     (EPERM, 1, "許可されていない操作です"),
     (ENOENT, 2, "そのようなファイルやディレクトリはありません"),

@@ -208,8 +208,8 @@ fn stream_to_stdout(fd: i32, buffer: &mut [MaybeUninit<u8>]) -> Result<(), Strea
         }
 
         let initialized: &[u8] =
-            // SAFETY: `read` guarantees that the first `_read` elements of 
-            // `buffer` are initialized, with `_read <= buffer.len()`. 
+            // SAFETY: `read` guarantees that the first `_read` elements of
+            // `buffer` are initialized, with `_read <= buffer.len()`.
             // Therefore this range is valid to view as an initialized `[u8]`.
             unsafe { core::slice::from_raw_parts(buffer.as_ptr().cast(), _read) };
 
