@@ -11,9 +11,9 @@ use crate::errno::Errno;
 /// by repeatedly calling `f` until it succeeds or returns a different error.
 ///
 /// Errors other than `EINTR` are returned unchanged.
-pub fn retry_on_eintr<F, R>(f: F) -> Result<R, Errno>
+pub fn retry_on_eintr<F, R>(mut f: F) -> Result<R, Errno>
 where
-    F: Fn() -> Result<R, Errno>,
+    F: FnMut() -> Result<R, Errno>,
 {
     loop {
         match f() {
