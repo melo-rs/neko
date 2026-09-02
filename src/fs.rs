@@ -66,6 +66,11 @@ pub struct Metadata {
 }
 
 impl Metadata {
+    /// Returns `true` if this metadata describes a regular file.
+    ///
+    /// This is equivalent to the `S_ISREG(st_mode)` test provided by POSIX
+    /// implementations such as libc.
+    #[must_use]
     pub const fn is_file(&self) -> bool {
         const S_IFMT: u32 = 0o170000;
         const S_IFREG: u32 = 0o100000;
