@@ -41,7 +41,7 @@ where
 
             let number_as_slice: &[u8] = &buffer[start..];
 
-            eprintln!(b"neko: ", context, b": ", errno.cause(), number_as_slice)
+            eprintln!(b"neko: ", context, b": ", errno.cause(), b" ", number_as_slice)
         } else {
             eprintln!(b"neko: ", context, b": ", errno.cause(),)
         }
