@@ -137,10 +137,8 @@ pub unsafe extern "C" fn do_start(rsp_ptr: *const usize) -> ! {
                         let _ = write_input_error(input, errno);
                         had_error = true;
 
-                        if !is_stdin {
-                            if let Err(errno) = close(fd) {
-                                let _ = write_input_error(input, errno);
-                            }
+                        if !is_stdin && let Err(errno) = close(fd) {
+                            let _ = write_input_error(input, errno);
                         }
 
                         continue;
@@ -154,10 +152,8 @@ pub unsafe extern "C" fn do_start(rsp_ptr: *const usize) -> ! {
                     let _ = write_input_error(input, "入力ファイルが出力ファイルです".as_bytes());
                     had_error = true;
 
-                    if !is_stdin {
-                        if let Err(errno) = close(fd) {
-                            let _ = write_input_error(input, errno);
-                        }
+                    if !is_stdin && let Err(errno) = close(fd) {
+                        let _ = write_input_error(input, errno);
                     }
 
                     continue;
@@ -178,11 +174,9 @@ pub unsafe extern "C" fn do_start(rsp_ptr: *const usize) -> ! {
                 }
             }
 
-            if !is_stdin {
-                if let Err(errno) = close(fd) {
-                    let _ = write_input_error(input, errno);
-                    had_error = true;
-                }
+            if !is_stdin && let Err(errno) = close(fd) {
+                let _ = write_input_error(input, errno);
+                had_error = true;
             }
         }
     }

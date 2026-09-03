@@ -1,0 +1,42 @@
+name: Run Checks
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Get Rust Toolchain
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: clippy, rustfmt, rust-src
+
+      - name: Get uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          enable-cache: true
+
+      - name: Run Formatter (rustfmt)
+        run: cargo fmt --check
+
+      - name: Run Linter (clippy)
+        run: cargo clippy --lib --bin neko -- -D warnings
+
+      - name: Build Documentation
+        run: cargo doc --no-deps
+
+      - name: Build Release Binary
+        run: cargo build --release
+
+      - name: Run Tests
+        run: uv run --locked pytest
+        env:
+          RELEASE_BIN: ${{ github.workspace }}/target/x86_64-unknown-linux-none/release/neko
