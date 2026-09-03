@@ -14,13 +14,14 @@ def is_elf(path: Path) -> bool:
     except OSError:
         return False
 
+
 @pytest.fixture(scope="session")
-def command() -> Path:
+def executable() -> Path:
     try:
-        path = Path(os.environ["RELEASE_BIN"])
+        path = Path(os.environ["ELF_PATH"])
     except KeyError:
-        pytest.fail("RELEASE_BIN environment variable should be set")
-    
+        pytest.fail("ELF_PATH environment variable should be set")
+
     if not is_elf(path):
         pytest.fail(f"{path} is not an ELF file")
 

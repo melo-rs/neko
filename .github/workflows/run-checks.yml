@@ -39,4 +39,4 @@ jobs:
       - name: Run Tests
         run: uv run --locked pytest
         env:
-          RELEASE_BIN: ${{ github.workspace }}/target/x86_64-unknown-linux-none/release/neko
+          ELF_PATH: ${{ github.workspace }}/target/x86_64-unknown-linux-none/release/neko
