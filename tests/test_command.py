@@ -3,64 +3,33 @@ import subprocess
 import threading
 from pathlib import Path
 
-import pytest
-from utils import close_stdout
-
-
-def is_elf(path: Path) -> bool:
-    if not path.is_file():
-        return False
-
-    try:
-        with path.open("rb") as file:
-            return file.read(4) == b"\x7fELF"
-    except OSError:
-        return False
-
-@pytest.fixture(scope="session")
-def command() -> Path:
-    try:
-        path = Path(os.environ["RELEASE_BIN"])
-    except KeyError:
-        pytest.fail("RELEASE_BIN environment variable should be set")
-    
-    if not is_elf(path):
-        pytest.fail(f"{path} is not an ELF file")
-
-    if not os.access(path, os.X_OK):
-        pytest.fail(f"{path} is not executable")
-
-    return path
-
 
 def test_stdin(command: Path):
-    contents = b"hello from stdin"
-
     result = subprocess.run(
         [command],
-        input=contents,
+        input=b"x",
         capture_output=True,
         check=False
     )
 
     assert result.returncode == 0
     assert result.stderr == b""
-    assert result.stdout == contents
+    assert result.stdout == b"x"
 
 
 def test_file(command: Path, tmp_path: Path):
-    file = tmp_path / "file"
-    file.write_bytes(b"contents\n")
+    path = tmp_path / "file"
+    path.write_bytes(b"x")
 
     result = subprocess.run(
-        [command, file],
+        [command, path],
         capture_output=True,
         check=False,
     )
 
     assert result.returncode == 0
     assert result.stderr == b""
-    assert result.stdout == b"contents\n"
+    assert result.stdout == b"x"
 
 def test_multiple_files(command: Path, tmp_path: Path):
     first = tmp_path / "first"
@@ -69,26 +38,40 @@ def test_multiple_files(command: Path, tmp_path: Path):
     second = tmp_path / "second"
     second.write_bytes(b"second\n")
 
-    result = subprocess.run([command, first, second], capture_output=True, check=False)
+    result = subprocess.run(
+        [command, first, second], 
+        capture_output=True, 
+        check=False
+    )
 
     assert result.returncode == 0
     assert result.stderr == b""
     assert result.stdout == b"first\nsecond\n"
 
 def test_stdin_no_args(command: Path):
-    result = subprocess.run([command], input=b"hello from stdin!", capture_output=True, check=False)
+    result = subprocess.run(
+        [command],
+        input=b"x",
+        capture_output=True,
+        check=False
+    )
 
     assert result.returncode == 0
     assert result.stderr == b""
-    assert result.stdout == b"hello from stdin!"
+    assert result.stdout == b"x"
 
 
 def test_stdin_dash(command: Path):
-    result = subprocess.run([command, "-"], input=b"hello from stdin!", capture_output=True, check=False)
+    result = subprocess.run(
+        [command, "-"], 
+        input=b"x", 
+        capture_output=True, 
+        check=False
+    )
 
     assert result.returncode == 0
     assert result.stderr == b""
-    assert result.stdout == b"hello from stdin!"
+    assert result.stdout == b"x"
 
 
 def test_mixed_files_and_stdin(command: Path, tmp_path: Path):
@@ -145,7 +128,7 @@ def test_same_file_as_stdout(command: Path, tmp_path: Path):
 
 def test_same_file_as_stdout_append(command: Path, tmp_path: Path):
     path = tmp_path / "file"
-    path.write_bytes(b"hello")
+    path.write_bytes(b"x")
 
     with path.open("ab") as stdout:
         result = subprocess.run(
@@ -156,11 +139,11 @@ def test_same_file_as_stdout_append(command: Path, tmp_path: Path):
         )
 
     assert result.returncode == 1
-    assert path.read_bytes() == b"hello"
+    assert path.read_bytes() == b"x"
 
 def test_same_file_as_stdin_and_stdout(command: Path, tmp_path: Path):
     path = tmp_path / "file"
-    path.write_bytes(b"hello")
+    path.write_bytes(b"x")
 
     with (
         path.open("rb") as stdin,
@@ -175,13 +158,13 @@ def test_same_file_as_stdin_and_stdout(command: Path, tmp_path: Path):
         )
 
     assert result.returncode == 1
-    assert path.read_bytes() == b"hello"
+    assert path.read_bytes() == b"x"
 
 def test_dev_full(command: Path):
     with open("/dev/full", "wb") as stdout:
         result = subprocess.run(
             [command],
-            input=b"hello",
+            input=b"x",
             stdout=stdout,
             stderr=subprocess.PIPE,
             check=False
@@ -195,7 +178,7 @@ def test_closed_stdout(command: Path):
         [command],
         input=b"x",
         stderr=subprocess.PIPE,
-        preexec_fn=close_stdout,
+        preexec_fn=lambda: os.close(1),
         check=False
     )
 
