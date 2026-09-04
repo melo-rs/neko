@@ -4,7 +4,7 @@ pub trait Error {
     fn write_to_stderr(&self) -> Result<(), Errno>;
 }
 
-macro_rules! eprintln {
+macro_rules! ewriteln {
     ($($arg:expr),+ $(,)?) => {
         {
             use $crate::io::ToWriteVector as _;
@@ -28,7 +28,7 @@ where
     T2: ToWriteVector,
 {
     fn write_to_stderr(&self) -> Result<(), Errno> {
-        eprintln!(b"neko: ", self.0, b": ", self.1)
+        ewriteln!(b"neko: ", self.0, b": ", self.1)
     }
 }
 
@@ -56,7 +56,7 @@ where
 
             let number_as_slice: &[u8] = &buffer[start..];
 
-            eprintln!(
+            ewriteln!(
                 b"neko: ",
                 context,
                 b": ",
@@ -65,7 +65,7 @@ where
                 number_as_slice
             )
         } else {
-            eprintln!(b"neko: ", context, b": ", errno.cause(),)
+            ewriteln!(b"neko: ", context, b": ", errno.cause(),)
         }
     }
 }
