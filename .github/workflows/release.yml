@@ -1,0 +1,91 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "[0-9]+.[0-9]+.[0-9]+"
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+
+env:
+  TARGET: x86_64-unknown-linux-none
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Get version from tag
+        run: echo "VERSION=${{ github.ref_name }}" >> "$GITHUB_ENV"
+
+      - name: Print version
+        run: echo "version is $VERSION"
+
+      - name: Check Cargo.toml version
+        shell: bash
+        run: |
+          if ! grep -q "^version = \"$VERSION\"$" Cargo.toml
+          then
+            echo "error: tag version $VERSION does not match Cargo.toml" >&2
+            exit 1
+          fi
+
+      - name: Create draft GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$VERSION" \
+            --draft \
+            --verify-tag \
+            --title "$VERSION"
+
+      - name: Get Rust toolchain
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rust-src
+          target: ${{ env.TARGET }}
+
+      - name: Build release binary
+        shell: bash
+        run: |
+          cargo build --release --target "$TARGET"
+          echo "BIN=target/$TARGET/release/neko" >> "$GITHUB_ENV"
+
+      - name: Determine archive name
+        shell: bash
+        run: |
+          echo "ARCHIVE=neko-$VERSION-$TARGET" >> "$GITHUB_ENV"
+        
+      - name: Create directory for archive
+        shell: bash
+        run: |
+          mkdir "$ARCHIVE"
+          cp "$BIN" "$ARCHIVE"/
+          cp {README.md,LICENSE} "$ARCHIVE"/
+
+      - name: Build archive
+        shell: bash
+        run: |
+          tar czf "$ARCHIVE.tar.gz" "$ARCHIVE"
+          sha256sum "$ARCHIVE.tar.gz" > "$ARCHIVE.tar.gz.sha256"
+          echo "ASSET=$ARCHIVE.tar.gz" >> "$GITHUB_ENV"
+          echo "ASSET_SUM=$ARCHIVE.tar.gz.sha256" >> "$GITHUB_ENV"
+
+      - name: Attest build provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: ${{ env.ASSET }}
+
+      - name: Upload release archive
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          gh release upload "$VERSION" "$ASSET" "$ASSET_SUM"

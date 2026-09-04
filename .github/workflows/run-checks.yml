@@ -11,10 +11,10 @@ jobs:
   checks:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v7
 
-      - name: Get Rust Toolchain
+      - name: Get Rust toolchain
         uses: dtolnay/rust-toolchain@nightly
         with:
           components: clippy, rustfmt, rust-src
@@ -24,19 +24,19 @@ jobs:
         with:
           enable-cache: true
 
-      - name: Run Formatter (rustfmt)
+      - name: Run formatter (rustfmt)
         run: cargo fmt --check
 
-      - name: Run Linter (clippy)
+      - name: Run linter (clippy)
         run: cargo clippy --lib --bin neko -- -D warnings
 
-      - name: Build Documentation
+      - name: Build documentation
         run: cargo doc --no-deps
 
-      - name: Build Release Binary
+      - name: Build release binary
         run: cargo build --release
 
-      - name: Run Tests
+      - name: Run tests
         run: uv run --locked pytest
         env:
           ELF_PATH: ${{ github.workspace }}/target/x86_64-unknown-linux-none/release/neko
