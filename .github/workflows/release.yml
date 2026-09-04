@@ -50,7 +50,6 @@ jobs:
         uses: dtolnay/rust-toolchain@nightly
         with:
           components: rust-src
-          target: ${{ env.TARGET }}
 
       - name: Build release binary
         shell: bash
