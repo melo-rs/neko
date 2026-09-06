@@ -62,10 +62,10 @@ where
                 b": ",
                 errno.cause(),
                 b" ",
-                number_as_slice
+                number_as_slice,
             )
         } else {
-            ewriteln!(b"neko: ", context, b": ", errno.cause(),)
+            ewriteln!(b"neko: ", context, b": ", errno.cause())
         }
     }
 }
