@@ -19,7 +19,7 @@ returns_ () {
 
   [ "$VERBOSE" = true ] && set -x
 
-  return "$ret_"
+  { return "$ret_"; } 2>/dev/null
 }
 
 # Used as
