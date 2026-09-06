@@ -18,7 +18,7 @@ Download the latest release for your platform from [GitHub Releases](https://git
 ```sh
 sha256sum -c neko-1.0.1-x86_64-unknown-linux-none.tar.gz.sha256                    # checksum
 tar -xf neko-1.0.1-x86_64-unknown-linux-none.tar.gz                                # extract the release archive
-sudo install -m 755  neko-1.0.1-x86_64-unknown-linux-none/neko /usr/local/bin/neko # install
+sudo install -m 755 neko-1.0.1-x86_64-unknown-linux-none/neko /usr/local/bin/neko # install
 ```
 
 You can then summon the feline from anywhere:
