@@ -23,17 +23,18 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Get version from tag
-        run: echo "VERSION=${{ github.ref_name }}" >> "$GITHUB_ENV"
+        id: version
+        run: echo "version=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
 
       - name: Print version
-        run: echo "version is $VERSION"
+        run: echo "version is ${{ steps.version.outputs.version }}"
 
       - name: Check Cargo.toml version
         shell: bash
         run: |
-          if ! grep -q "^version = \"$VERSION\"$" Cargo.toml
+          if ! grep -q "^version = \"${{ steps.version.outputs.version }}\"$" Cargo.toml
           then
-            echo "error: tag version $VERSION does not match Cargo.toml" >&2
+            echo "error: tag version ${{ steps.version.outputs.version }} does not match Cargo.toml" >&2
             exit 1
           fi
 
@@ -41,10 +42,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$VERSION" \
+          gh release create "${{ steps.version.outputs.version }}" \
             --draft \
             --verify-tag \
-            --title "$VERSION"
+            --title "${{ steps.version.outputs.version }}"
 
       - name: Get Rust toolchain
         uses: dtolnay/rust-toolchain@nightly
@@ -52,39 +53,42 @@ jobs:
           components: rust-src
 
       - name: Build release binary
+        id: build
         shell: bash
         run: |
           cargo build --release --target "$TARGET"
-          echo "BIN=target/$TARGET/release/neko" >> "$GITHUB_ENV"
+          echo "bin=target/$TARGET/release/neko" >> "$GITHUB_OUTPUT"
 
       - name: Determine archive name
+        id: archive
         shell: bash
         run: |
-          echo "ARCHIVE=neko-$VERSION-$TARGET" >> "$GITHUB_ENV"
-        
+          echo "name=neko-${{ steps.version.outputs.version }}-$TARGET" >> "$GITHUB_OUTPUT"
+
       - name: Create directory for archive
         shell: bash
         run: |
-          mkdir "$ARCHIVE"
-          cp "$BIN" "$ARCHIVE"/
-          cp {README.md,LICENSE} "$ARCHIVE"/
+          mkdir "${{ steps.archive.outputs.name }}"
+          cp "${{ steps.build.outputs.bin }}" "${{ steps.archive.outputs.name }}"/
+          cp {README.md,LICENSE} "${{ steps.archive.outputs.name }}"/
 
       - name: Build archive
+        id: package
         shell: bash
         run: |
-          tar czf "$ARCHIVE.tar.gz" "$ARCHIVE"
-          sha256sum "$ARCHIVE.tar.gz" > "$ARCHIVE.tar.gz.sha256"
-          echo "ASSET=$ARCHIVE.tar.gz" >> "$GITHUB_ENV"
-          echo "ASSET_SUM=$ARCHIVE.tar.gz.sha256" >> "$GITHUB_ENV"
+          tar czf "${{ steps.archive.outputs.name }}.tar.gz" "${{ steps.archive.outputs.name }}"
+          sha256sum "${{ steps.archive.outputs.name }}.tar.gz" > "${{ steps.archive.outputs.name }}.tar.gz.sha256"
+          echo "asset=${{ steps.archive.outputs.name }}.tar.gz" >> "$GITHUB_OUTPUT"
+          echo "checksum=${{ steps.archive.outputs.name }}.tar.gz.sha256" >> "$GITHUB_OUTPUT"
 
       - name: Attest build provenance
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
-          subject-path: ${{ env.ASSET }}
+          subject-path: ${{ steps.package.outputs.asset }}
 
       - name: Upload release archive
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          gh release upload "$VERSION" "$ASSET" "$ASSET_SUM"
+          gh release upload "${{ steps.version.outputs.version }}" "${{ steps.package.outputs.asset }}" "${{ steps.package.outputs.checksum }}"
