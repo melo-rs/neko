@@ -16,8 +16,8 @@ neko currently requires x86-64 Linux. Support for other Linux architectures is p
 Download the latest release for your platform from [GitHub Releases](https://github.com/melo-rs/neko/releases/), extract the archive, and install the binary somewhere in your `PATH`:
 
 ```sh
-sha256sum -c neko-1.0.1-x86_64-unknown-linux-none.tar.gz.sha256                    # checksum
-tar -xf neko-1.0.1-x86_64-unknown-linux-none.tar.gz                                # extract the release archive
+sha256sum -c neko-1.0.1-x86_64-unknown-linux-none.tar.gz.sha256                   # checksum
+tar -xf neko-1.0.1-x86_64-unknown-linux-none.tar.gz                               # extract the release archive
 sudo install -m 755 neko-1.0.1-x86_64-unknown-linux-none/neko /usr/local/bin/neko # install
 ```
 
